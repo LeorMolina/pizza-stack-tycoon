@@ -10,7 +10,7 @@ export class CustomerSystem {
     private readonly tables: DiningTable[];
     private readonly exitPos: THREE.Vector3;
     private readonly maxQueue = 3;
-    private readonly spawnInterval = 4.2;
+    private readonly spawnInterval = 4.5;
     private readonly palette = [0xec4899, 0x8b5cf6, 0x06b6d4, 0xf97316, 0x10b981];
     private queue: Customer[] = [];
     private seatedCustomers: Customer[] = [];
@@ -60,7 +60,7 @@ export class CustomerSystem {
         return null;
     }
 
-    private spawnCustomer(): void {
+    private spawnCustomer(restaurantLevel: number): void {
         const freeTable = this.findFreeTableIndex();
         const canSeat = freeTable !== null;
         const canQueue = this.queue.length < this.maxQueue;
@@ -69,7 +69,7 @@ export class CustomerSystem {
 
         const chooseDineIn = canSeat && (!canQueue || Math.random() < 0.6);
         const mode: CustomerMode = chooseDineIn ? "dine_in" : "takeaway";
-        const desiredPizzas = 1;
+        const desiredPizzas = restaurantLevel >= 2 && Math.random() < 0.4 ? 2 : 1;
         const color = this.palette[Math.floor(Math.random() * this.palette.length)];
 
         if (mode === "dine_in" && freeTable !== null) {
@@ -120,41 +120,36 @@ export class CustomerSystem {
         this.leaving.push(customer);
     }
 
-    public onBoxReadyAtCounter(baseValue: number, boxMesh: THREE.Object3D): number {
-        const activeTableCustomer = this.seatedCustomers.find((c) => !c.served);
+    public tryServeFromCounter(boxMesh: THREE.Object3D, restaurantLevel: number): number {
+        const levelBonus = (restaurantLevel - 1) * 2;
+
+        const activeTableCustomer = this.seatedCustomers.find((c) => c.isReadyAtCounter());
         if (activeTableCustomer) {
-            const completed = activeTableCustomer.receiveBox(boxMesh);
-            let payout = baseValue + 8;
-            if (completed) {
-                payout += 15;
-            }
-            return payout;
+            activeTableCustomer.receiveBox(boxMesh);
+            return 16 + levelBonus;
         }
 
         const frontQueue = this.queue[0];
-        if (frontQueue) {
+        if (frontQueue && frontQueue.isReadyAtCounter()) {
             const completed = frontQueue.receiveBox(boxMesh);
-            let payout = baseValue + 5;
-
             if (completed) {
-                payout += 10;
                 this.queue.shift();
                 this.sendCustomerToExit(frontQueue);
                 this.queue.forEach((c, idx) => {
                     c.setTargetPosition(this.getQueueSlotPosition(idx));
                 });
             }
-            return payout;
+            return 12 + levelBonus;
         }
 
-        return baseValue;
+        return 0;
     }
 
-    update(dt: number): void {
+    update(dt: number, restaurantLevel = 1): void {
         this.spawnTimer += dt;
         if (this.spawnTimer >= this.spawnInterval) {
             this.spawnTimer = 0;
-            this.spawnCustomer();
+            this.spawnCustomer(restaurantLevel);
         }
 
         for (const c of this.queue) {

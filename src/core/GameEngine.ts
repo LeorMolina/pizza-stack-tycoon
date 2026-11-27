@@ -16,7 +16,6 @@ interface FlyingPizza {
     target: THREE.Vector3;
     elapsed: number;
     duration: number;
-    earned: number;
 }
 
 interface PickingPizza {
@@ -42,6 +41,7 @@ export class GameEngine {
     private flyingPizzas: FlyingPizza[] = [];
     private pickingPizzas: PickingPizza[] = [];
     private readonly counterBoxStack: THREE.Group;
+    private readonly maxCounterBoxes = 8;
     private readonly trashStack: THREE.Group;
     private trashCount = 0;
     private money = 0;
@@ -117,16 +117,30 @@ export class GameEngine {
 
         this.input = new InputController(this.renderer.domElement);
         this.ui = new UIManager(container, (id) => this.handleUpgrade(id));
-        this.ui.update(
-            this.money,
-            0,
-            this.player.maxStack,
-            this.upgrades.getViews(),
-            this.customers.getServedTotal()
-        );
 
         window.addEventListener("resize", () => this.onResize(container));
         this.loop(performance.now());
+    }
+
+    private getLevelInfo(): { level: number; progressText: string } {
+        const served = this.customers.getServedTotal();
+        const customersPerLevel = 5;
+        const level = Math.floor(served / customersPerLevel) + 1;
+        const current = served % customersPerLevel;
+        return {
+            level,
+            progressText: `${current}/${customersPerLevel}`
+        };
+    }
+
+    private projectWorldToScreen(worldPos: THREE.Vector3): { x: number; y: number } {
+        const projected = worldPos.clone().project(this.camera);
+        const width = this.renderer.domElement.clientWidth;
+        const height = this.renderer.domElement.clientHeight;
+        return {
+            x: (projected.x * 0.5 + 0.5) * width,
+            y: (-projected.y * 0.5 + 0.5) * height
+        };
     }
 
     private buildRestaurantFloor(): void {
@@ -210,13 +224,6 @@ export class GameEngine {
         const result = this.upgrades.tryBuy(id, this.money, this.player, this.station);
         if (result.purchased) {
             this.money = result.newMoney;
-            this.ui.update(
-                this.money,
-                this.player.getStackCount(),
-                this.player.maxStack,
-                this.upgrades.getViews(),
-                this.customers.getServedTotal()
-            );
         }
     }
 
@@ -294,9 +301,23 @@ export class GameEngine {
             this.player.mesh.position,
             playerRadius,
             this.station.position,
-            1.2,
-            1.2
+            1.1,
+            1.1
         );
+
+        const sideCounterCenter = new THREE.Vector3(
+            this.station.position.x + 1.65,
+            0,
+            this.station.position.z + 0.25
+        );
+        this.resolveBoxCollision(
+            this.player.mesh.position,
+            playerRadius,
+            sideCounterCenter,
+            0.75,
+            0.85
+        );
+
         this.resolveBoxCollision(
             this.player.mesh.position,
             playerRadius,
@@ -362,7 +383,13 @@ export class GameEngine {
         }
     }
 
-    private launchPizzaToCounter(earned: number): void {
+    private restackCounterBoxes(): void {
+        this.counterBoxStack.children.forEach((box, idx) => {
+            box.position.set(0, idx * 0.22, 0);
+        });
+    }
+
+    private launchPizzaToCounter(): void {
         const consumedPizza = this.player.popTopPizza();
         if (!consumedPizza) return;
 
@@ -385,8 +412,7 @@ export class GameEngine {
             start: startWorld,
             target: targetWorld,
             elapsed: 0,
-            duration: 0.25,
-            earned
+            duration: 0.25
         });
     }
 
@@ -404,14 +430,33 @@ export class GameEngine {
                 this.scene.remove(item.mesh);
 
                 const boxOnCounter = PizzaStation.createPizzaBoxMesh();
-                boxOnCounter.position.set(0, this.counterBoxStack.children.length * 0.22, 0);
                 this.counterBoxStack.add(boxOnCounter);
-
-                const finalPayout = this.customers.onBoxReadyAtCounter(item.earned, boxOnCounter);
-                this.money += finalPayout;
+                this.restackCounterBoxes();
                 this.deliveryCounter.triggerDeliveryFeedback();
                 this.flyingPizzas.splice(i, 1);
             }
+        }
+    }
+
+    private updateCounterService(level: number): void {
+        if (this.counterBoxStack.children.length === 0) return;
+
+        const topBox = this.counterBoxStack.children[this.counterBoxStack.children.length - 1];
+        const payout = this.customers.tryServeFromCounter(topBox, level);
+
+        if (payout > 0) {
+            this.counterBoxStack.remove(topBox);
+            this.restackCounterBoxes();
+            this.money += payout;
+
+            const screenPos = this.projectWorldToScreen(
+                new THREE.Vector3(
+                    this.deliveryCounter.position.x,
+                    2.2,
+                    this.deliveryCounter.position.z
+                )
+            );
+            this.ui.spawnFloatingPopup(screenPos.x, screenPos.y, `+R$ ${payout}`, "#16a34a");
         }
     }
 
@@ -420,15 +465,15 @@ export class GameEngine {
             if (table.tryPickupEmptyBox(this.player.mesh.position)) {
                 const trashBox = PizzaStation.createPizzaBoxMesh();
                 trashBox.scale.setScalar(0.62);
-                trashBox.position.set(
-                    0,
-                    this.player.getStackCount() * 0.16 + this.trashCount * 0.18,
-                    0
-                );
                 this.trashStack.add(trashBox);
                 this.trashCount++;
             }
         }
+
+        const baseHeight = this.player.getStackCount() * 0.16;
+        this.trashStack.children.forEach((box, idx) => {
+            box.position.set(0, baseHeight + idx * 0.18, 0);
+        });
 
         if (this.trashCount > 0) {
             const distToBin = Math.hypot(
@@ -436,7 +481,6 @@ export class GameEngine {
                 this.player.mesh.position.z - this.trashBin.position.z
             );
             if (distToBin <= 2.4) {
-                this.money += this.trashCount * 10;
                 this.trashCount = 0;
                 this.trashStack.clear();
                 this.trashBin.triggerFeedback();
@@ -448,10 +492,12 @@ export class GameEngine {
         const dt = Math.min((now - this.lastTime) / 1000, 0.05);
         this.lastTime = now;
 
+        const levelInfo = this.getLevelInfo();
+
         this.station.update(dt);
         this.deliveryCounter.update(dt);
         this.trashBin.update(dt);
-        this.customers.update(dt);
+        this.customers.update(dt, levelInfo.level);
 
         for (const table of this.tables) {
             table.update(dt);
@@ -472,23 +518,29 @@ export class GameEngine {
 
         this.updatePickingPizzas(dt);
 
+        const canStageMoreBoxes =
+            this.counterBoxStack.children.length + this.flyingPizzas.length < this.maxCounterBoxes;
         const delivery = this.deliveryCounter.updateDelivery(
             dt,
             this.player.mesh.position,
-            this.player.getStackCount()
+            canStageMoreBoxes ? this.player.getStackCount() : 0
         );
         if (delivery.delivered > 0) {
-            this.launchPizzaToCounter(delivery.earned);
+            this.launchPizzaToCounter();
         }
 
         this.updateFlyingPizzas(dt);
+        this.updateCounterService(levelInfo.level);
 
+        const updatedLevelInfo = this.getLevelInfo();
         this.ui.update(
             this.money,
             this.player.getStackCount(),
             this.player.maxStack,
             this.upgrades.getViews(),
-            this.customers.getServedTotal()
+            this.customers.getServedTotal(),
+            updatedLevelInfo.level,
+            updatedLevelInfo.progressText
         );
 
         this.camera.position.x = this.player.mesh.position.x + 12;

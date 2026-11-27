@@ -158,6 +158,18 @@ export class Customer {
         this.targetPos.copy(pos);
     }
 
+    public isReadyAtCounter(): boolean {
+        if (this.served) return false;
+        if (this.mode === "dine_in" && this.dineInStage !== "going_to_counter") {
+            return false;
+        }
+        const dist = Math.hypot(
+            this.targetPos.x - this.mesh.position.x,
+            this.targetPos.z - this.mesh.position.z
+        );
+        return dist <= 0.35;
+    }
+
     public getRemainingPizzas(): number {
         return Math.max(0, this.desiredPizzas - this.deliveredPizzas);
     }
@@ -166,7 +178,7 @@ export class Customer {
         if (this.served) return false;
         this.deliveredPizzas++;
 
-        boxVisual.position.set(0, (this.carryContainer.children.length) * 0.22, 0);
+        boxVisual.position.set(0, this.carryContainer.children.length * 0.22, 0);
         boxVisual.rotation.set(0, 0, 0);
         boxVisual.scale.setScalar(0.68);
         this.carryContainer.add(boxVisual);
@@ -199,7 +211,7 @@ export class Customer {
     public extractCarriedBoxForTable(): THREE.Object3D | null {
         if (this.carryContainer.children.length === 0) return null;
         const box = this.carryContainer.children[0];
-        this.carryContainer.remove(box);
+        this.carryContainer.clear();
         return box;
     }
 

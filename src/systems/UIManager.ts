@@ -5,6 +5,7 @@ export class UIManager {
     private readonly moneyEl: HTMLSpanElement;
     private readonly stackEl: HTMLSpanElement;
     private readonly servedEl: HTMLSpanElement;
+    private readonly levelEl: HTMLSpanElement;
     private readonly upgradesContainer: HTMLDivElement;
     private readonly onUpgradeClick: (id: UpgradeId) => void;
 
@@ -25,7 +26,7 @@ export class UIManager {
         topBar.style.flexWrap = "wrap";
 
         const moneyBadge = this.createBadge("#16a34a");
-        moneyBadge.innerHTML = `Caixa: $<span id="hud-money">0</span>`;
+        moneyBadge.innerHTML = `Caixa: R$ <span id="hud-money">0</span>`;
 
         const stackBadge = this.createBadge("#ea580c");
         stackBadge.innerHTML = `Pilha: <span id="hud-stack">0/12</span>`;
@@ -33,7 +34,10 @@ export class UIManager {
         const servedBadge = this.createBadge("#0284c7");
         servedBadge.innerHTML = `Clientes: <span id="hud-served">0</span>`;
 
-        topBar.append(moneyBadge, stackBadge, servedBadge);
+        const levelBadge = this.createBadge("#7c3aed");
+        levelBadge.innerHTML = `Nível <span id="hud-level">1 (0/5)</span>`;
+
+        topBar.append(moneyBadge, stackBadge, servedBadge, levelBadge);
 
         this.upgradesContainer = document.createElement("div");
         this.upgradesContainer.style.position = "fixed";
@@ -50,6 +54,7 @@ export class UIManager {
         this.moneyEl = topBar.querySelector("#hud-money") as HTMLSpanElement;
         this.stackEl = topBar.querySelector("#hud-stack") as HTMLSpanElement;
         this.servedEl = topBar.querySelector("#hud-served") as HTMLSpanElement;
+        this.levelEl = topBar.querySelector("#hud-level") as HTMLSpanElement;
     }
 
     private createBadge(bgColor: string): HTMLDivElement {
@@ -64,16 +69,51 @@ export class UIManager {
         return el;
     }
 
+    public spawnFloatingPopup(
+        screenX: number,
+        screenY: number,
+        text: string,
+        color = "#16a34a"
+    ): void {
+        const popup = document.createElement("div");
+        popup.textContent = text;
+        popup.style.position = "fixed";
+        popup.style.left = `${Math.round(screenX)}px`;
+        popup.style.top = `${Math.round(screenY)}px`;
+        popup.style.transform = "translate(-50%, -50%)";
+        popup.style.color = color;
+        popup.style.fontWeight = "900";
+        popup.style.fontSize = "18px";
+        popup.style.textShadow = "0 2px 4px rgba(0, 0, 0, 0.35)";
+        popup.style.pointerEvents = "none";
+        popup.style.transition = "transform 0.75s ease-out, opacity 0.75s ease-out";
+        popup.style.opacity = "1";
+
+        this.root.appendChild(popup);
+
+        requestAnimationFrame(() => {
+            popup.style.transform = "translate(-50%, -140%)";
+            popup.style.opacity = "0";
+        });
+
+        window.setTimeout(() => {
+            popup.remove();
+        }, 780);
+    }
+
     public update(
         money: number,
         stackCount: number,
         maxStack: number,
         upgrades: UpgradeView[],
-        servedCustomers = 0
+        servedCustomers = 0,
+        level = 1,
+        levelProgress = "0/5"
     ): void {
         this.moneyEl.textContent = String(money);
         this.stackEl.textContent = `${stackCount}/${maxStack}`;
         this.servedEl.textContent = String(servedCustomers);
+        this.levelEl.textContent = `${level} (${levelProgress})`;
 
         this.upgradesContainer.innerHTML = "";
         for (const upg of upgrades) {
@@ -90,7 +130,7 @@ export class UIManager {
             btn.style.background = canAfford ? "#1e293b" : "#94a3b8";
             btn.style.color = "#ffffff";
             btn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.2)";
-            btn.textContent = `${upg.label} (Nv.${upg.level}) - $${upg.cost}`;
+            btn.textContent = `${upg.label} (Nv.${upg.level}) - R$ ${upg.cost}`;
             btn.addEventListener("click", () => this.onUpgradeClick(upg.id));
             this.upgradesContainer.appendChild(btn);
         }
