@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { Player } from "../entities/Player";
 import { PizzaStation } from "../entities/PizzaStation";
 import { DeliveryCounter } from "../entities/DeliveryCounter";
+import { DiningTable } from "../entities/DiningTable";
 import { InputController } from "../systems/InputController";
 import { UIManager } from "../systems/UIManager";
 import { UpgradeSystem } from "../systems/UpgradeSystem";
@@ -30,6 +31,7 @@ export class GameEngine {
     private player: Player;
     private station: PizzaStation;
     private deliveryCounter: DeliveryCounter;
+    private tables: DiningTable[] = [];
     private input: InputController;
     private ui: UIManager;
     private upgrades: UpgradeSystem;
@@ -40,7 +42,7 @@ export class GameEngine {
 
     constructor(container: HTMLElement) {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xf1f5f9);
+        this.scene.background = new THREE.Color(0xfef3c7);
 
         const aspect = container.clientWidth / container.clientHeight;
         this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100);
@@ -51,28 +53,35 @@ export class GameEngine {
         this.renderer.setSize(container.clientWidth, container.clientHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(this.renderer.domElement);
         this.renderer.domElement.style.touchAction = "none";
 
-        const ambient = new THREE.AmbientLight(0xffffff, 0.7);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
+        const hemiLight = new THREE.HemisphereLight(0xfffbeb, 0xf59e0b, 0.85);
+        const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.05);
         dirLight.position.set(10, 18, 10);
         dirLight.castShadow = true;
-        this.scene.add(ambient, dirLight);
+        dirLight.shadow.mapSize.set(1024, 1024);
+        this.scene.add(hemiLight, dirLight);
 
-        const floor = new THREE.Mesh(
-            new THREE.BoxGeometry(20, 0.5, 20),
-            new THREE.MeshStandardMaterial({ color: 0xfde68a })
-        );
-        floor.position.y = -0.25;
-        floor.receiveShadow = true;
-        this.scene.add(floor);
+        this.buildRestaurantFloor();
 
-        this.station = new PizzaStation(-4, -4);
+        this.station = new PizzaStation(-4.5, -4.5);
         this.scene.add(this.station.mesh);
 
-        this.deliveryCounter = new DeliveryCounter(4, -4);
+        this.deliveryCounter = new DeliveryCounter(4.5, -4.5);
         this.scene.add(this.deliveryCounter.mesh);
+
+        const tableCoords: [number, number][] = [
+            [-4.8, 3.8],
+            [0, 3.8],
+            [4.8, 3.8]
+        ];
+        for (const [tx, tz] of tableCoords) {
+            const table = new DiningTable(tx, tz);
+            this.tables.push(table);
+            this.scene.add(table.mesh);
+        }
 
         this.player = new Player();
         this.scene.add(this.player.mesh);
@@ -84,6 +93,84 @@ export class GameEngine {
 
         window.addEventListener("resize", () => this.onResize(container));
         this.loop(performance.now());
+    }
+
+    private buildRestaurantFloor(): void {
+        const floorGroup = new THREE.Group();
+        const size = 20;
+        const tilesPerSide = 8;
+        const tileSize = size / tilesPerSide;
+
+        const lightTileMat = new THREE.MeshStandardMaterial({
+            color: 0xfffbeb,
+            roughness: 0.65,
+            metalness: 0.02
+        });
+        const warmTileMat = new THREE.MeshStandardMaterial({
+            color: 0xfde68a,
+            roughness: 0.65,
+            metalness: 0.02
+        });
+
+        for (let gx = 0; gx < tilesPerSide; gx++) {
+            for (let gz = 0; gz < tilesPerSide; gz++) {
+                const isLight = (gx + gz) % 2 === 0;
+                const tile = new THREE.Mesh(
+                    new THREE.BoxGeometry(tileSize - 0.04, 0.25, tileSize - 0.04),
+                    isLight ? lightTileMat : warmTileMat
+                );
+                tile.position.set(
+                    -size / 2 + tileSize / 2 + gx * tileSize,
+                    -0.125,
+                    -size / 2 + tileSize / 2 + gz * tileSize
+                );
+                tile.receiveShadow = true;
+                floorGroup.add(tile);
+            }
+        }
+
+        // Rodapé/borda baixa ao redor do salão
+        const wallMat = new THREE.MeshStandardMaterial({
+            color: 0xb91c1c,
+            roughness: 0.55,
+            metalness: 0.04
+        });
+        const wallHeight = 0.65;
+        const wallThickness = 0.5;
+
+        const backWall = new THREE.Mesh(
+            new THREE.BoxGeometry(size + wallThickness * 2, wallHeight, wallThickness),
+            wallMat
+        );
+        backWall.position.set(0, wallHeight / 2 - 0.25, -size / 2 - wallThickness / 2);
+        backWall.castShadow = true;
+        backWall.receiveShadow = true;
+
+        const leftWall = new THREE.Mesh(
+            new THREE.BoxGeometry(wallThickness, wallHeight, size + wallThickness * 2),
+            wallMat
+        );
+        leftWall.position.set(-size / 2 - wallThickness / 2, wallHeight / 2 - 0.25, 0);
+        leftWall.castShadow = true;
+        leftWall.receiveShadow = true;
+
+        const rightWall = new THREE.Mesh(
+            new THREE.BoxGeometry(wallThickness, wallHeight, size + wallThickness * 2),
+            wallMat
+        );
+        rightWall.position.set(size / 2 + wallThickness / 2, wallHeight / 2 - 0.25, 0);
+        rightWall.castShadow = true;
+        rightWall.receiveShadow = true;
+
+        const frontWall = new THREE.Mesh(
+            new THREE.BoxGeometry(size + wallThickness * 2, wallHeight, wallThickness),
+            wallMat
+        );
+        frontWall.position.set(0, wallHeight / 2 - 0.25, size / 2 + wallThickness / 2);
+        frontWall.receiveShadow = true;
+
+        floorGroup.add(backWall, leftWall, rightWall, frontWall);
+        this.scene.add(floorGroup);
     }
 
     private handleUpgrade(id: UpgradeId): void {
@@ -137,14 +224,45 @@ export class GameEngine {
         }
     }
 
+    private resolveCircleCollision(
+        pos: THREE.Vector3,
+        playerRadius: number,
+        center: THREE.Vector3,
+        obstacleRadius: number
+    ): void {
+        const dx = pos.x - center.x;
+        const dz = pos.z - center.z;
+        const minDist = playerRadius + obstacleRadius;
+        const distSq = dx * dx + dz * dz;
+
+        if (distSq < minDist * minDist) {
+            const dist = Math.sqrt(distSq) || 0.0001;
+            const overlap = minDist - dist;
+            pos.x += (dx / dist) * overlap;
+            pos.z += (dz / dist) * overlap;
+        }
+    }
+
     private applyWorldCollisions(): void {
         const playerRadius = 0.55;
         const floorLimit = 10 - playerRadius;
 
-        this.player.mesh.position.x = Math.max(-floorLimit, Math.min(floorLimit, this.player.mesh.position.x));
-        this.player.mesh.position.z = Math.max(-floorLimit, Math.min(floorLimit, this.player.mesh.position.z));
+        this.player.mesh.position.x = Math.max(
+            -floorLimit,
+            Math.min(floorLimit, this.player.mesh.position.x)
+        );
+        this.player.mesh.position.z = Math.max(
+            -floorLimit,
+            Math.min(floorLimit, this.player.mesh.position.z)
+        );
 
-        this.resolveBoxCollision(this.player.mesh.position, playerRadius, this.station.position, 1.3, 1.3);
+        this.resolveBoxCollision(
+            this.player.mesh.position,
+            playerRadius,
+            this.station.position,
+            1.3,
+            1.3
+        );
         this.resolveBoxCollision(
             this.player.mesh.position,
             playerRadius,
@@ -152,6 +270,15 @@ export class GameEngine {
             this.deliveryCounter.halfExtents.x,
             this.deliveryCounter.halfExtents.z
         );
+
+        for (const table of this.tables) {
+            this.resolveCircleCollision(
+                this.player.mesh.position,
+                playerRadius,
+                table.position,
+                table.radius
+            );
+        }
     }
 
     private startPickingPizzas(pizzas: THREE.Mesh[]): void {
@@ -175,7 +302,7 @@ export class GameEngine {
     private updatePickingPizzas(dt: number): void {
         const targetWorld = new THREE.Vector3();
         this.player.mesh.getWorldPosition(targetWorld);
-        targetWorld.y += 1.35 + this.player.getStackCount() * 0.16;
+        targetWorld.y += 1.25 + this.player.getStackCount() * 0.16;
 
         for (let i = this.pickingPizzas.length - 1; i >= 0; i--) {
             const item = this.pickingPizzas[i];
@@ -208,7 +335,7 @@ export class GameEngine {
 
         const targetWorld = new THREE.Vector3(
             this.deliveryCounter.position.x,
-            1.48,
+            1.44,
             this.deliveryCounter.position.z
         );
 
