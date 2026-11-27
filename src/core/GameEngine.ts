@@ -6,6 +6,7 @@ import { DiningTable } from "../entities/DiningTable";
 import { TrashBin } from "../entities/TrashBin";
 import { Helper } from "../entities/Helper";
 import { DeliveryHelper } from "../entities/DeliveryHelper";
+import { DriveThruSystem } from "../entities/DriveThruSystem";
 import type { CounterTarget } from "../entities/DeliveryHelper";
 import { InputController } from "../systems/InputController";
 import { UIManager } from "../systems/UIManager";
@@ -13,13 +14,15 @@ import { UpgradeSystem } from "../systems/UpgradeSystem";
 import { CustomerSystem } from "../systems/CustomerSystem";
 import type { UpgradeId, UpgradeLevels } from "../systems/UpgradeSystem";
 
+type DropTarget = CounterTarget | "drivethru";
+
 interface FlyingPizza {
     mesh: THREE.Object3D;
     start: THREE.Vector3;
     target: THREE.Vector3;
     elapsed: number;
     duration: number;
-    targetCounter: CounterTarget;
+    targetCounter: DropTarget;
 }
 
 interface PickingPizza {
@@ -32,6 +35,7 @@ interface PickingPizza {
 interface SaveData {
     money: number;
     servedTotal: number;
+    driveThruUnlocked?: boolean;
     levels: Partial<UpgradeLevels>;
 }
 
@@ -44,6 +48,7 @@ export class GameEngine {
     private player: Player;
     private helper: Helper;
     private deliveryHelper: DeliveryHelper;
+    private driveThru: DriveThruSystem;
     private station: PizzaStation;
     private tableCounter: DeliveryCounter;
     private deliveryCounter: DeliveryCounter;
@@ -102,6 +107,8 @@ export class GameEngine {
 
         this.trashBin = new TrashBin(8.2, -1.8);
         this.scene.add(this.trashBin.mesh);
+
+        this.driveThru = new DriveThruSystem(this.scene);
 
         this.tableCounterBoxStack = new THREE.Group();
         this.tableCounterBoxStack.position.set(
@@ -173,6 +180,7 @@ export class GameEngine {
             const payload: SaveData = {
                 money: this.money,
                 servedTotal: this.customers.getServedTotal(),
+                driveThruUnlocked: this.driveThru.isUnlocked(),
                 levels: this.upgrades.getLevels()
             };
             window.localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
@@ -192,6 +200,9 @@ export class GameEngine {
             }
             if (typeof data.servedTotal === "number" && Number.isFinite(data.servedTotal)) {
                 this.customers.setServedTotal(data.servedTotal);
+            }
+            if (data.driveThruUnlocked === true) {
+                this.driveThru.setUnlocked(true);
             }
             if (data.levels && typeof data.levels === "object") {
                 this.upgrades.restoreLevels(
@@ -503,6 +514,16 @@ export class GameEngine {
             Math.min(floorLimit, this.player.mesh.position.z)
         );
 
+        if (this.driveThru.isUnlocked()) {
+            this.resolveBoxCollision(
+                this.player.mesh.position,
+                playerRadius,
+                this.driveThru.counterPosition,
+                0.65,
+                1.2
+            );
+        }
+
         this.resolveBoxCollision(
             this.player.mesh.position,
             playerRadius,
@@ -604,25 +625,36 @@ export class GameEngine {
         });
     }
 
-    private getInFlightCount(target: CounterTarget): number {
+    private getInFlightCount(target: DropTarget): number {
         return this.flyingPizzas.filter((f) => f.targetCounter === target).length;
     }
 
-    private launchBoxFromWorldPos(startWorld: THREE.Vector3, targetCounter: CounterTarget): void {
+    private launchBoxFromWorldPos(startWorld: THREE.Vector3, targetCounter: DropTarget): void {
         const boxMesh = PizzaStation.createPizzaBoxMesh();
         boxMesh.position.copy(startWorld);
         this.scene.add(boxMesh);
 
-        const counterObj = targetCounter === "table" ? this.tableCounter : this.deliveryCounter;
-        const stackObj =
-            targetCounter === "table" ? this.tableCounterBoxStack : this.deliveryCounterBoxStack;
-        const stackHeight = stackObj.children.length * 0.22;
+        let targetWorld: THREE.Vector3;
 
-        const targetWorld = new THREE.Vector3(
-            counterObj.position.x,
-            1.26 + stackHeight,
-            counterObj.position.z
-        );
+        if (targetCounter === "drivethru") {
+            const stackHeight = this.driveThru.getBoxCount() * 0.22;
+            targetWorld = new THREE.Vector3(
+                this.driveThru.counterPosition.x,
+                1.26 + stackHeight,
+                this.driveThru.counterPosition.z
+            );
+        } else {
+            const counterObj = targetCounter === "table" ? this.tableCounter : this.deliveryCounter;
+            const stackObj =
+                targetCounter === "table" ? this.tableCounterBoxStack : this.deliveryCounterBoxStack;
+            const stackHeight = stackObj.children.length * 0.22;
+
+            targetWorld = new THREE.Vector3(
+                counterObj.position.x,
+                1.26 + stackHeight,
+                counterObj.position.z
+            );
+        }
 
         this.flyingPizzas.push({
             mesh: boxMesh,
@@ -634,7 +666,7 @@ export class GameEngine {
         });
     }
 
-    private launchPlayerPizzaToCounter(targetCounter: CounterTarget): void {
+    private launchPlayerPizzaToCounter(targetCounter: DropTarget): void {
         const consumedPizza = this.player.popTopPizza();
         if (!consumedPizza) return;
 
@@ -656,12 +688,15 @@ export class GameEngine {
             if (t >= 1) {
                 this.scene.remove(item.mesh);
 
-                const boxOnCounter = PizzaStation.createPizzaBoxMesh();
-                if (item.targetCounter === "table") {
+                if (item.targetCounter === "drivethru") {
+                    this.driveThru.addBoxToCounter();
+                } else if (item.targetCounter === "table") {
+                    const boxOnCounter = PizzaStation.createPizzaBoxMesh();
                     this.tableCounterBoxStack.add(boxOnCounter);
                     this.restackBoxes(this.tableCounterBoxStack);
                     this.tableCounter.triggerDeliveryFeedback();
                 } else {
+                    const boxOnCounter = PizzaStation.createPizzaBoxMesh();
                     this.deliveryCounterBoxStack.add(boxOnCounter);
                     this.restackBoxes(this.deliveryCounterBoxStack);
                     this.deliveryCounter.triggerDeliveryFeedback();
@@ -780,6 +815,25 @@ export class GameEngine {
         this.updateTableCashCollection();
         this.helper.update(dt, this.tables, this.trashBin);
 
+        // Zona de desbloqueio e atendimento do Drive-Thru
+        const unlockResult = this.driveThru.updateUnlockPad(
+            dt,
+            this.player.mesh.position,
+            this.money
+        );
+        if (unlockResult.unlockedNow) {
+            this.money -= unlockResult.costPaid;
+            this.saveGame();
+            const screenPos = this.projectWorldToScreen(
+                new THREE.Vector3(
+                    this.driveThru.padPosition.x,
+                    2.0,
+                    this.driveThru.padPosition.z
+                )
+            );
+            this.ui.spawnFloatingPopup(screenPos.x, screenPos.y, "DRIVE-THRU ABERTO!", "#ef4444");
+        }
+
         const collected = this.station.collectPizzasForPlayer(
             this.player.mesh.position,
             this.player.getAvailableSlots()
@@ -789,6 +843,17 @@ export class GameEngine {
         }
 
         this.updatePickingPizzas(dt);
+
+        if (
+            this.driveThru.updatePlayerDrop(
+                dt,
+                this.player.mesh.position,
+                this.player.getStackCount(),
+                this.getInFlightCount("drivethru")
+            )
+        ) {
+            this.launchPlayerPizzaToCounter("drivethru");
+        }
 
         const tableTotalCount =
             this.tableCounterBoxStack.children.length + this.getInFlightCount("table");
@@ -826,6 +891,19 @@ export class GameEngine {
 
         this.updateFlyingPizzas(dt);
         this.updateCounterService(levelInfo.level);
+
+        const driveThruEarned = this.driveThru.update(dt, levelInfo.level);
+        if (driveThruEarned > 0) {
+            this.money += driveThruEarned;
+            const screenPos = this.projectWorldToScreen(
+                new THREE.Vector3(
+                    this.driveThru.counterPosition.x,
+                    2.2,
+                    this.driveThru.counterPosition.z
+                )
+            );
+            this.ui.spawnFloatingPopup(screenPos.x, screenPos.y, `+R$ ${driveThruEarned}`, "#ef4444");
+        }
 
         const updatedLevelInfo = this.getLevelInfo();
         this.ui.update(
