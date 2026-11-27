@@ -1,12 +1,18 @@
 import * as THREE from "three";
 
+interface ReadyPizzaItem {
+    mesh: THREE.Mesh;
+    age: number;
+}
+
 export class PizzaStation {
     public readonly mesh: THREE.Group;
     public readonly position: THREE.Vector3;
-    private readonly productionInterval = 1.5;
+    private productionInterval = 1.5;
     private readonly maxReadyPizzas = 8;
+    private readonly pickupDelay = 0.28;
     private timer = 0;
-    private readyPizzas: THREE.Mesh[] = [];
+    private readyPizzas: ReadyPizzaItem[] = [];
     private readonly pickupRadius = 2.4;
 
     constructor(x: number, z: number) {
@@ -44,7 +50,15 @@ export class PizzaStation {
         return pizza;
     }
 
+    public increaseProductionSpeed(factor = 0.85): void {
+        this.productionInterval = Math.max(0.35, Number((this.productionInterval * factor).toFixed(3)));
+    }
+
     update(dt: number): void {
+        for (const item of this.readyPizzas) {
+            item.age += dt;
+        }
+
         if (this.readyPizzas.length >= this.maxReadyPizzas) return;
 
         this.timer += dt;
@@ -53,7 +67,7 @@ export class PizzaStation {
             const pizza = PizzaStation.createPizzaMesh();
             const index = this.readyPizzas.length;
             pizza.position.set(0, 1.48 + index * 0.16, 0);
-            this.readyPizzas.push(pizza);
+            this.readyPizzas.push({ mesh: pizza, age: 0 });
             this.mesh.add(pizza);
         }
     }
@@ -67,20 +81,21 @@ export class PizzaStation {
 
         if (dist > this.pickupRadius) return [];
 
-        const countToTake = Math.min(this.readyPizzas.length, availableSlots);
         const taken: THREE.Mesh[] = [];
+        const remaining: ReadyPizzaItem[] = [];
 
-        for (let i = 0; i < countToTake; i++) {
-            const pizza = this.readyPizzas.shift();
-            if (pizza) {
-                this.mesh.remove(pizza);
-                taken.push(pizza);
+        for (const item of this.readyPizzas) {
+            if (item.age >= this.pickupDelay && taken.length < availableSlots) {
+                this.mesh.remove(item.mesh);
+                taken.push(item.mesh);
+            } else {
+                remaining.push(item);
             }
         }
 
-        // Reorganiza a altura das pizzas restantes na bancada
-        this.readyPizzas.forEach((pizza, idx) => {
-            pizza.position.set(0, 1.48 + idx * 0.16, 0);
+        this.readyPizzas = remaining;
+        this.readyPizzas.forEach((item, idx) => {
+            item.mesh.position.set(0, 1.48 + idx * 0.16, 0);
         });
 
         return taken;

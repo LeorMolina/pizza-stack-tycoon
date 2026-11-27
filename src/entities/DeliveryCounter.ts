@@ -42,16 +42,16 @@ export class DeliveryCounter {
     }
 
     public triggerDeliveryFeedback(): void {
-        this.pulseTime = 0.14;
+        this.pulseTime = 0.22;
         this.deliveredCount++;
     }
 
     update(dt: number): void {
         if (this.pulseTime > 0) {
             this.pulseTime = Math.max(0, this.pulseTime - dt);
-            const t = 1 - this.pulseTime / 0.14;
-            const bounce = Math.sin(t * Math.PI) * 0.08;
-            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.6, 1 + bounce);
+            const t = 1 - this.pulseTime / 0.22;
+            const bounce = Math.sin(t * Math.PI) * 0.18;
+            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.75, 1 + bounce);
         } else {
             this.mesh.scale.set(1, 1, 1);
         }

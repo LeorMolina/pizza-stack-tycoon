@@ -2,8 +2,8 @@ import * as THREE from "three";
 
 export class Player {
     public readonly mesh: THREE.Group;
-    public readonly maxStack = 12;
-    private readonly speed = 6.5;
+    public maxStack = 12;
+    private speed = 6.5;
     private readonly stackContainer: THREE.Group;
     private stack: THREE.Mesh[] = [];
     private swayOffsets: number[] = [];
@@ -41,6 +41,14 @@ export class Player {
         return Math.max(0, this.maxStack - this.stack.length);
     }
 
+    public increaseMaxStack(amount = 4): void {
+        this.maxStack += amount;
+    }
+
+    public increaseSpeed(amount = 1.5): void {
+        this.speed += amount;
+    }
+
     public addToStack(pizzas: THREE.Mesh[]): void {
         for (const pizza of pizzas) {
             if (this.stack.length >= this.maxStack) break;
@@ -53,13 +61,19 @@ export class Player {
         }
     }
 
+    public popTopPizza(): THREE.Mesh | null {
+        const topPizza = this.stack.pop();
+        if (!topPizza) return null;
+        this.swayOffsets.pop();
+        this.stackContainer.remove(topPizza);
+        return topPizza;
+    }
+
     public removeFromStack(count: number): number {
         let removed = 0;
         for (let i = 0; i < count; i++) {
-            const topPizza = this.stack.pop();
+            const topPizza = this.popTopPizza();
             if (!topPizza) break;
-            this.swayOffsets.pop();
-            this.stackContainer.remove(topPizza);
             removed++;
         }
         return removed;
