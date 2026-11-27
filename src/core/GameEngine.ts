@@ -62,11 +62,12 @@ export class GameEngine {
     private trashCount = 0;
     private money = 0;
     private saveTimer = 0;
+    private isResetting = false;
     private lastTime = performance.now();
 
     constructor(container: HTMLElement) {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xfef3c7);
+        this.scene.background = new THREE.Color(0xe0f2fe);
 
         const aspect = container.clientWidth / container.clientHeight;
         this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 100);
@@ -81,7 +82,7 @@ export class GameEngine {
         container.appendChild(this.renderer.domElement);
         this.renderer.domElement.style.touchAction = "none";
 
-        const hemiLight = new THREE.HemisphereLight(0xfffbeb, 0xf59e0b, 0.85);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0xe2e8f0, 0.9);
         const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.05);
         dirLight.position.set(10, 18, 10);
         dirLight.castShadow = true;
@@ -90,16 +91,16 @@ export class GameEngine {
 
         this.buildRestaurantFloor();
 
-        this.station = new PizzaStation(-5.8, -5.2);
+        this.station = new PizzaStation(-5.4, -6.8);
         this.scene.add(this.station.mesh);
 
-        this.tableCounter = new DeliveryCounter(-0.2, -4.4, 0x0284c7, 16);
+        this.tableCounter = new DeliveryCounter(-1.2, -2.2, 0x0284c7, 16);
         this.scene.add(this.tableCounter.mesh);
 
-        this.deliveryCounter = new DeliveryCounter(4.4, -4.4, 0xf59e0b, 12);
+        this.deliveryCounter = new DeliveryCounter(3.6, -2.2, 0xf59e0b, 12);
         this.scene.add(this.deliveryCounter.mesh);
 
-        this.trashBin = new TrashBin(8.0, -7.2);
+        this.trashBin = new TrashBin(8.2, -1.8);
         this.scene.add(this.trashBin.mesh);
 
         this.tableCounterBoxStack = new THREE.Group();
@@ -122,9 +123,9 @@ export class GameEngine {
         this.trashStack.position.set(0, 1.25, -0.58);
 
         const tableCoords: [number, number][] = [
-            [-4.8, 3.8],
-            [0, 3.8],
-            [4.8, 3.8]
+            [-4.8, 4.6],
+            [0, 4.6],
+            [4.8, 4.6]
         ];
         for (const [tx, tz] of tableCoords) {
             const table = new DiningTable(tx, tz);
@@ -133,14 +134,14 @@ export class GameEngine {
         }
 
         this.player = new Player();
-        this.player.mesh.position.set(-2.5, 0, -6.5);
+        this.player.mesh.position.set(-2.5, 0, -4.8);
         this.player.mesh.add(this.trashStack);
         this.scene.add(this.player.mesh);
 
-        this.helper = new Helper(7.4, -4.5);
+        this.helper = new Helper(7.4, -4.2);
         this.scene.add(this.helper.mesh);
 
-        this.deliveryHelper = new DeliveryHelper(-4.15, -6.55);
+        this.deliveryHelper = new DeliveryHelper(-4.0, -4.8);
         this.scene.add(this.deliveryHelper.mesh);
 
         this.upgrades = new UpgradeSystem();
@@ -157,6 +158,7 @@ export class GameEngine {
         this.ui = new UIManager(
             container,
             (id) => this.handleUpgrade(id),
+            () => this.saveGame(),
             () => this.resetGame()
         );
 
@@ -166,6 +168,7 @@ export class GameEngine {
     }
 
     private saveGame(): void {
+        if (this.isResetting) return;
         try {
             const payload: SaveData = {
                 money: this.money,
@@ -205,6 +208,7 @@ export class GameEngine {
     }
 
     private resetGame(): void {
+        this.isResetting = true;
         try {
             window.localStorage.removeItem(SAVE_STORAGE_KEY);
         } catch {
@@ -237,77 +241,180 @@ export class GameEngine {
     private buildRestaurantFloor(): void {
         const floorGroup = new THREE.Group();
         const size = 20;
-        const tilesPerSide = 8;
+        const tilesPerSide = 10;
         const tileSize = size / tilesPerSide;
+        const dividerZ = -1.2;
 
-        const lightTileMat = new THREE.MeshStandardMaterial({
-            color: 0xfffbeb,
+        const kitchenLightMat = new THREE.MeshStandardMaterial({
+            color: 0xf8f5f0,
+            roughness: 0.55,
+            metalness: 0.02
+        });
+        const kitchenWarmMat = new THREE.MeshStandardMaterial({
+            color: 0xede6da,
+            roughness: 0.55,
+            metalness: 0.02
+        });
+
+        const hallWoodMat = new THREE.MeshStandardMaterial({
+            color: 0xf3d4ad,
             roughness: 0.65,
             metalness: 0.02
         });
-        const warmTileMat = new THREE.MeshStandardMaterial({
-            color: 0xfde68a,
+        const hallWoodAltMat = new THREE.MeshStandardMaterial({
+            color: 0xecc99e,
             roughness: 0.65,
             metalness: 0.02
         });
 
         for (let gx = 0; gx < tilesPerSide; gx++) {
             for (let gz = 0; gz < tilesPerSide; gz++) {
-                const isLight = (gx + gz) % 2 === 0;
+                const posX = -size / 2 + tileSize / 2 + gx * tileSize;
+                const posZ = -size / 2 + tileSize / 2 + gz * tileSize;
+                const isKitchen = posZ < dividerZ;
+                const isEven = (gx + gz) % 2 === 0;
+
+                const mat = isKitchen
+                    ? isEven
+                        ? kitchenLightMat
+                        : kitchenWarmMat
+                    : isEven
+                        ? hallWoodMat
+                        : hallWoodAltMat;
+
                 const tile = new THREE.Mesh(
-                    new THREE.BoxGeometry(tileSize - 0.04, 0.25, tileSize - 0.04),
-                    isLight ? lightTileMat : warmTileMat
+                    new THREE.BoxGeometry(tileSize - 0.03, 0.25, tileSize - 0.03),
+                    mat
                 );
-                tile.position.set(
-                    -size / 2 + tileSize / 2 + gx * tileSize,
-                    -0.125,
-                    -size / 2 + tileSize / 2 + gz * tileSize
-                );
+                tile.position.set(posX, -0.125, posZ);
                 tile.receiveShadow = true;
                 floorGroup.add(tile);
             }
         }
 
+        const dividerStrip = new THREE.Mesh(
+            new THREE.BoxGeometry(size, 0.02, 0.16),
+            new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.4 })
+        );
+        dividerStrip.position.set(0, 0.005, dividerZ);
+        dividerStrip.receiveShadow = true;
+        floorGroup.add(dividerStrip);
+
         const wallMat = new THREE.MeshStandardMaterial({
-            color: 0xb91c1c,
-            roughness: 0.55,
-            metalness: 0.04
+            color: 0xf1f5f9,
+            roughness: 0.6,
+            metalness: 0.03
         });
-        const wallHeight = 0.65;
-        const wallThickness = 0.5;
+        const trimMat = new THREE.MeshStandardMaterial({
+            color: 0x0284c7,
+            roughness: 0.45
+        });
+        const lowWallMat = new THREE.MeshStandardMaterial({
+            color: 0xd97706,
+            roughness: 0.55
+        });
+
+        const highWallHeight = 2.7;
+        const wallThickness = 0.45;
 
         const backWall = new THREE.Mesh(
-            new THREE.BoxGeometry(size + wallThickness * 2, wallHeight, wallThickness),
+            new THREE.BoxGeometry(size + wallThickness * 2, highWallHeight, wallThickness),
             wallMat
         );
-        backWall.position.set(0, wallHeight / 2 - 0.25, -size / 2 - wallThickness / 2);
+        backWall.position.set(0, highWallHeight / 2 - 0.25, -size / 2 - wallThickness / 2);
         backWall.castShadow = true;
         backWall.receiveShadow = true;
 
+        const backTrim = new THREE.Mesh(
+            new THREE.BoxGeometry(size + wallThickness * 2, 0.22, wallThickness + 0.06),
+            trimMat
+        );
+        backTrim.position.set(0, highWallHeight - 0.25, -size / 2 - wallThickness / 2);
+
         const leftWall = new THREE.Mesh(
-            new THREE.BoxGeometry(wallThickness, wallHeight, size + wallThickness * 2),
+            new THREE.BoxGeometry(wallThickness, highWallHeight, size + wallThickness * 2),
             wallMat
         );
-        leftWall.position.set(-size / 2 - wallThickness / 2, wallHeight / 2 - 0.25, 0);
+        leftWall.position.set(-size / 2 - wallThickness / 2, highWallHeight / 2 - 0.25, 0);
         leftWall.castShadow = true;
         leftWall.receiveShadow = true;
 
-        const rightWall = new THREE.Mesh(
-            new THREE.BoxGeometry(wallThickness, wallHeight, size + wallThickness * 2),
-            wallMat
+        const leftTrim = new THREE.Mesh(
+            new THREE.BoxGeometry(wallThickness + 0.06, 0.22, size + wallThickness * 2),
+            trimMat
         );
-        rightWall.position.set(size / 2 + wallThickness / 2, wallHeight / 2 - 0.25, 0);
-        rightWall.castShadow = true;
+        leftTrim.position.set(-size / 2 - wallThickness / 2, highWallHeight - 0.25, 0);
+
+        const glassMat = new THREE.MeshStandardMaterial({
+            color: 0x7dd3fc,
+            roughness: 0.2,
+            metalness: 0.1
+        });
+        for (const winZ of [-5.8, -2.6]) {
+            const frame = new THREE.Mesh(
+                new THREE.BoxGeometry(wallThickness + 0.12, 1.15, 2.3),
+                trimMat
+            );
+            frame.position.set(-size / 2 - wallThickness / 2, 1.45, winZ);
+
+            const glass = new THREE.Mesh(
+                new THREE.BoxGeometry(wallThickness + 0.16, 0.9, 2.0),
+                glassMat
+            );
+            glass.position.set(-size / 2 - wallThickness / 2, 1.45, winZ);
+            floorGroup.add(frame, glass);
+        }
+
+        const signBoard = new THREE.Mesh(
+            new THREE.BoxGeometry(0.18, 1.25, 3.8),
+            new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.35 })
+        );
+        signBoard.position.set(-size / 2 - 0.12, 3.15, -4.2);
+        signBoard.castShadow = true;
+        floorGroup.add(signBoard);
+
+        const hrDoorFrame = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 2.1, 0.18),
+            new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 })
+        );
+        hrDoorFrame.position.set(6.2, 0.85, -size / 2 + 0.02);
+
+        const hrDoor = new THREE.Mesh(
+            new THREE.BoxGeometry(1.26, 1.98, 0.22),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45 })
+        );
+        hrDoor.position.set(6.2, 0.8, -size / 2 + 0.03);
+
+        const hrKnob = new THREE.Mesh(
+            new THREE.SphereGeometry(0.06, 10, 10),
+            new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.6, roughness: 0.25 })
+        );
+        hrKnob.position.set(6.65, 0.85, -size / 2 + 0.16);
+
+        const hrMat = new THREE.Mesh(
+            new THREE.BoxGeometry(1.6, 0.03, 0.9),
+            new THREE.MeshStandardMaterial({ color: 0xb91c1c, roughness: 0.7 })
+        );
+        hrMat.position.set(6.2, 0.01, -size / 2 + 0.65);
+
+        floorGroup.add(hrDoorFrame, hrDoor, hrKnob, hrMat);
+
+        const lowHeight = 0.48;
+        const rightWall = new THREE.Mesh(
+            new THREE.BoxGeometry(wallThickness, lowHeight, size + wallThickness * 2),
+            lowWallMat
+        );
+        rightWall.position.set(size / 2 + wallThickness / 2, lowHeight / 2 - 0.25, 0);
         rightWall.receiveShadow = true;
 
         const frontWall = new THREE.Mesh(
-            new THREE.BoxGeometry(size + wallThickness * 2, wallHeight, wallThickness),
-            wallMat
+            new THREE.BoxGeometry(size + wallThickness * 2, lowHeight, wallThickness),
+            lowWallMat
         );
-        frontWall.position.set(0, wallHeight / 2 - 0.25, size / 2 + wallThickness / 2);
+        frontWall.position.set(0, lowHeight / 2 - 0.25, size / 2 + wallThickness / 2);
         frontWall.receiveShadow = true;
 
-        floorGroup.add(backWall, leftWall, rightWall, frontWall);
+        floorGroup.add(backWall, backTrim, leftWall, leftTrim, rightWall, frontWall);
         this.scene.add(floorGroup);
     }
 
@@ -632,6 +739,18 @@ export class GameEngine {
         }
     }
 
+    private updateTableCashCollection(): void {
+        for (const table of this.tables) {
+            const cashPos = table.getCashWorldPosition();
+            const collected = table.collectCash(this.player.mesh.position);
+            if (collected > 0) {
+                this.money += collected;
+                const screenPos = this.projectWorldToScreen(cashPos);
+                this.ui.spawnFloatingPopup(screenPos.x, screenPos.y, `+R$ ${collected}`, "#16a34a");
+            }
+        }
+    }
+
     private loop = (now: number): void => {
         const dt = Math.min((now - this.lastTime) / 1000, 0.05);
         this.lastTime = now;
@@ -658,6 +777,7 @@ export class GameEngine {
         this.player.update(dt, dir);
         this.applyWorldCollisions();
         this.updateTrashFlow();
+        this.updateTableCashCollection();
         this.helper.update(dt, this.tables, this.trashBin);
 
         const collected = this.station.collectPizzasForPlayer(

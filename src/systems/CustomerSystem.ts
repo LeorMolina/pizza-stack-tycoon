@@ -18,6 +18,7 @@ export class CustomerSystem {
     private leaving: Customer[] = [];
     private spawnTimer = 1.2;
     private servedTotal = 0;
+    private restaurantLevel = 1;
 
     constructor(
         scene: THREE.Scene,
@@ -129,11 +130,15 @@ export class CustomerSystem {
 
         if (customer.assignedTableIndex !== null) {
             const table = this.tables[customer.assignedTableIndex];
-            if (table && customer.hasLeftBoxOnTable) {
-                const boxOnTable = customer.extractCarriedBoxForTable();
-                if (boxOnTable) {
-                    table.placeEmptyBox(boxOnTable);
+            if (table) {
+                if (customer.hasLeftBoxOnTable) {
+                    const boxOnTable = customer.extractCarriedBoxForTable();
+                    if (boxOnTable) {
+                        table.placeEmptyBox(boxOnTable);
+                    }
                 }
+                const tableTip = 14 + (this.restaurantLevel - 1) * 3;
+                table.addCash(tableTip);
             }
             this.reservedTables.delete(customer.assignedTableIndex);
         }
@@ -180,6 +185,7 @@ export class CustomerSystem {
     }
 
     update(dt: number, restaurantLevel = 1): void {
+        this.restaurantLevel = restaurantLevel;
         this.spawnTimer += dt;
         if (this.spawnTimer >= this.spawnInterval) {
             this.spawnTimer = 0;
