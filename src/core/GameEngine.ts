@@ -11,7 +11,7 @@ import { InputController } from "../systems/InputController";
 import { UIManager } from "../systems/UIManager";
 import { UpgradeSystem } from "../systems/UpgradeSystem";
 import { CustomerSystem } from "../systems/CustomerSystem";
-import type { UpgradeId } from "../systems/UpgradeSystem";
+import type { UpgradeId, UpgradeLevels } from "../systems/UpgradeSystem";
 
 interface FlyingPizza {
     mesh: THREE.Object3D;
@@ -28,6 +28,14 @@ interface PickingPizza {
     elapsed: number;
     duration: number;
 }
+
+interface SaveData {
+    money: number;
+    servedTotal: number;
+    levels: Partial<UpgradeLevels>;
+}
+
+const SAVE_STORAGE_KEY = "pizza_stack_tycoon_save_v1";
 
 export class GameEngine {
     private scene: THREE.Scene;
@@ -53,6 +61,7 @@ export class GameEngine {
     private readonly trashStack: THREE.Group;
     private trashCount = 0;
     private money = 0;
+    private saveTimer = 0;
     private lastTime = performance.now();
 
     constructor(container: HTMLElement) {
@@ -142,11 +151,66 @@ export class GameEngine {
             this.tables
         );
 
+        this.loadGame();
+
         this.input = new InputController(this.renderer.domElement);
-        this.ui = new UIManager(container, (id) => this.handleUpgrade(id));
+        this.ui = new UIManager(
+            container,
+            (id) => this.handleUpgrade(id),
+            () => this.resetGame()
+        );
 
         window.addEventListener("resize", () => this.onResize(container));
+        window.addEventListener("beforeunload", () => this.saveGame());
         this.loop(performance.now());
+    }
+
+    private saveGame(): void {
+        try {
+            const payload: SaveData = {
+                money: this.money,
+                servedTotal: this.customers.getServedTotal(),
+                levels: this.upgrades.getLevels()
+            };
+            window.localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(payload));
+        } catch {
+            // Ignora falha caso o storage esteja bloqueado
+        }
+    }
+
+    private loadGame(): void {
+        try {
+            const raw = window.localStorage.getItem(SAVE_STORAGE_KEY);
+            if (!raw) return;
+
+            const data = JSON.parse(raw) as Partial<SaveData>;
+            if (typeof data.money === "number" && Number.isFinite(data.money)) {
+                this.money = Math.max(0, Math.floor(data.money));
+            }
+            if (typeof data.servedTotal === "number" && Number.isFinite(data.servedTotal)) {
+                this.customers.setServedTotal(data.servedTotal);
+            }
+            if (data.levels && typeof data.levels === "object") {
+                this.upgrades.restoreLevels(
+                    data.levels,
+                    this.player,
+                    this.station,
+                    this.helper,
+                    this.deliveryHelper
+                );
+            }
+        } catch {
+            // Ignora save corrompido
+        }
+    }
+
+    private resetGame(): void {
+        try {
+            window.localStorage.removeItem(SAVE_STORAGE_KEY);
+        } catch {
+            // Ignora erro de acesso
+        }
+        window.location.reload();
     }
 
     private getLevelInfo(): { level: number; progressText: string } {
@@ -258,6 +322,7 @@ export class GameEngine {
         );
         if (result.purchased) {
             this.money = result.newMoney;
+            this.saveGame();
         }
     }
 
@@ -570,6 +635,12 @@ export class GameEngine {
     private loop = (now: number): void => {
         const dt = Math.min((now - this.lastTime) / 1000, 0.05);
         this.lastTime = now;
+
+        this.saveTimer += dt;
+        if (this.saveTimer >= 2.0) {
+            this.saveTimer = 0;
+            this.saveGame();
+        }
 
         const levelInfo = this.getLevelInfo();
 

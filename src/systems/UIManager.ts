@@ -10,7 +10,11 @@ export class UIManager {
     private readonly upgradeButtons = new Map<UpgradeId, HTMLButtonElement>();
     private readonly onUpgradeClick: (id: UpgradeId) => void;
 
-    constructor(container: HTMLElement, onUpgradeClick: (id: UpgradeId) => void) {
+    constructor(
+        container: HTMLElement,
+        onUpgradeClick: (id: UpgradeId) => void,
+        onResetSave?: () => void
+    ) {
         this.onUpgradeClick = onUpgradeClick;
 
         this.root = document.createElement("div");
@@ -25,6 +29,7 @@ export class UIManager {
         topBar.style.gap = "12px";
         topBar.style.padding = "16px";
         topBar.style.flexWrap = "wrap";
+        topBar.style.alignItems = "center";
 
         const moneyBadge = this.createBadge("#16a34a");
         moneyBadge.innerHTML = `Caixa: R$ <span id="hud-money">0</span>`;
@@ -39,6 +44,27 @@ export class UIManager {
         levelBadge.innerHTML = `Nível <span id="hud-level">1 (0/5)</span>`;
 
         topBar.append(moneyBadge, stackBadge, servedBadge, levelBadge);
+
+        if (onResetSave) {
+            const resetBtn = document.createElement("button");
+            resetBtn.type = "button";
+            resetBtn.textContent = "Resetar Save";
+            resetBtn.style.pointerEvents = "auto";
+            resetBtn.style.background = "rgba(30, 41, 59, 0.78)";
+            resetBtn.style.color = "#f8fafc";
+            resetBtn.style.padding = "8px 12px";
+            resetBtn.style.border = "none";
+            resetBtn.style.borderRadius = "999px";
+            resetBtn.style.fontWeight = "600";
+            resetBtn.style.fontSize = "12px";
+            resetBtn.style.cursor = "pointer";
+            resetBtn.addEventListener("click", () => {
+                if (window.confirm("Deseja apagar o progresso salvo e reiniciar do zero?")) {
+                    onResetSave();
+                }
+            });
+            topBar.appendChild(resetBtn);
+        }
 
         this.upgradesContainer = document.createElement("div");
         this.upgradesContainer.style.position = "fixed";

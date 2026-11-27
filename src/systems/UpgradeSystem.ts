@@ -4,6 +4,7 @@ import { Helper } from "../entities/Helper";
 import { DeliveryHelper } from "../entities/DeliveryHelper";
 
 export type UpgradeId = "stack" | "speed" | "production" | "helper" | "runner";
+export type UpgradeLevels = Record<UpgradeId, number>;
 
 export interface UpgradeView {
     id: UpgradeId;
@@ -13,7 +14,7 @@ export interface UpgradeView {
 }
 
 export class UpgradeSystem {
-    private levels: Record<UpgradeId, number> = {
+    private levels: UpgradeLevels = {
         stack: 1,
         speed: 1,
         production: 1,
@@ -28,6 +29,54 @@ export class UpgradeSystem {
         helper: 120,
         runner: 220
     };
+
+    public getLevels(): UpgradeLevels {
+        return { ...this.levels };
+    }
+
+    public restoreLevels(
+        saved: Partial<UpgradeLevels>,
+        player: Player,
+        station: PizzaStation,
+        helper: Helper,
+        runner: DeliveryHelper
+    ): void {
+        const stackLvl = Math.max(1, Math.floor(saved.stack ?? 1));
+        const speedLvl = Math.max(1, Math.floor(saved.speed ?? 1));
+        const prodLvl = Math.max(1, Math.floor(saved.production ?? 1));
+        const helperLvl = Math.max(0, Math.floor(saved.helper ?? 0));
+        const runnerLvl = Math.max(0, Math.floor(saved.runner ?? 0));
+
+        for (let i = 1; i < stackLvl; i++) {
+            player.increaseMaxStack(4);
+        }
+        for (let i = 1; i < speedLvl; i++) {
+            player.increaseSpeed(1.5);
+        }
+        for (let i = 1; i < prodLvl; i++) {
+            station.increaseProductionSpeed(0.85);
+        }
+        if (helperLvl > 0) {
+            helper.hire();
+            for (let i = 1; i < helperLvl; i++) {
+                helper.upgrade();
+            }
+        }
+        if (runnerLvl > 0) {
+            runner.hire();
+            for (let i = 1; i < runnerLvl; i++) {
+                runner.upgrade();
+            }
+        }
+
+        this.levels = {
+            stack: stackLvl,
+            speed: speedLvl,
+            production: prodLvl,
+            helper: helperLvl,
+            runner: runnerLvl
+        };
+    }
 
     public getCost(id: UpgradeId): number {
         const isStaff = id === "helper" || id === "runner";

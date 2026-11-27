@@ -44,6 +44,10 @@ export class CustomerSystem {
         return this.servedTotal;
     }
 
+    public setServedTotal(total: number): void {
+        this.servedTotal = Math.max(0, Math.floor(total));
+    }
+
     private getDeliverySlotPosition(index: number): THREE.Vector3 {
         return new THREE.Vector3(
             this.deliveryQueueAnchor.x + index * 1.15,
