@@ -3,13 +3,15 @@ import { Player } from "../entities/Player";
 import { PizzaStation } from "../entities/PizzaStation";
 import { DeliveryCounter } from "../entities/DeliveryCounter";
 import { DiningTable } from "../entities/DiningTable";
+import { TrashBin } from "../entities/TrashBin";
 import { InputController } from "../systems/InputController";
 import { UIManager } from "../systems/UIManager";
 import { UpgradeSystem } from "../systems/UpgradeSystem";
+import { CustomerSystem } from "../systems/CustomerSystem";
 import type { UpgradeId } from "../systems/UpgradeSystem";
 
 interface FlyingPizza {
-    mesh: THREE.Mesh;
+    mesh: THREE.Object3D;
     start: THREE.Vector3;
     target: THREE.Vector3;
     elapsed: number;
@@ -31,12 +33,17 @@ export class GameEngine {
     private player: Player;
     private station: PizzaStation;
     private deliveryCounter: DeliveryCounter;
+    private trashBin: TrashBin;
     private tables: DiningTable[] = [];
     private input: InputController;
     private ui: UIManager;
     private upgrades: UpgradeSystem;
+    private customers: CustomerSystem;
     private flyingPizzas: FlyingPizza[] = [];
     private pickingPizzas: PickingPizza[] = [];
+    private readonly counterBoxStack: THREE.Group;
+    private readonly trashStack: THREE.Group;
+    private trashCount = 0;
     private money = 0;
     private lastTime = performance.now();
 
@@ -72,6 +79,20 @@ export class GameEngine {
         this.deliveryCounter = new DeliveryCounter(4.5, -4.5);
         this.scene.add(this.deliveryCounter.mesh);
 
+        this.trashBin = new TrashBin(7.8, -6.8);
+        this.scene.add(this.trashBin.mesh);
+
+        this.counterBoxStack = new THREE.Group();
+        this.counterBoxStack.position.set(
+            this.deliveryCounter.position.x,
+            1.26,
+            this.deliveryCounter.position.z
+        );
+        this.scene.add(this.counterBoxStack);
+
+        this.trashStack = new THREE.Group();
+        this.trashStack.position.set(0, 1.25, -0.58);
+
         const tableCoords: [number, number][] = [
             [-4.8, 3.8],
             [0, 3.8],
@@ -84,12 +105,25 @@ export class GameEngine {
         }
 
         this.player = new Player();
+        this.player.mesh.add(this.trashStack);
         this.scene.add(this.player.mesh);
 
         this.upgrades = new UpgradeSystem();
+        this.customers = new CustomerSystem(
+            this.scene,
+            this.deliveryCounter.position,
+            this.tables
+        );
+
         this.input = new InputController(this.renderer.domElement);
         this.ui = new UIManager(container, (id) => this.handleUpgrade(id));
-        this.ui.update(this.money, 0, this.player.maxStack, this.upgrades.getViews());
+        this.ui.update(
+            this.money,
+            0,
+            this.player.maxStack,
+            this.upgrades.getViews(),
+            this.customers.getServedTotal()
+        );
 
         window.addEventListener("resize", () => this.onResize(container));
         this.loop(performance.now());
@@ -129,7 +163,6 @@ export class GameEngine {
             }
         }
 
-        // Rodapé/borda baixa ao redor do salão
         const wallMat = new THREE.MeshStandardMaterial({
             color: 0xb91c1c,
             roughness: 0.55,
@@ -181,7 +214,8 @@ export class GameEngine {
                 this.money,
                 this.player.getStackCount(),
                 this.player.maxStack,
-                this.upgrades.getViews()
+                this.upgrades.getViews(),
+                this.customers.getServedTotal()
             );
         }
     }
@@ -260,8 +294,8 @@ export class GameEngine {
             this.player.mesh.position,
             playerRadius,
             this.station.position,
-            1.3,
-            1.3
+            1.2,
+            1.2
         );
         this.resolveBoxCollision(
             this.player.mesh.position,
@@ -269,6 +303,12 @@ export class GameEngine {
             this.deliveryCounter.position,
             this.deliveryCounter.halfExtents.x,
             this.deliveryCounter.halfExtents.z
+        );
+        this.resolveCircleCollision(
+            this.player.mesh.position,
+            playerRadius,
+            this.trashBin.position,
+            this.trashBin.radius
         );
 
         for (const table of this.tables) {
@@ -323,24 +363,25 @@ export class GameEngine {
     }
 
     private launchPizzaToCounter(earned: number): void {
-        const pizzaMesh = this.player.popTopPizza();
-        if (!pizzaMesh) return;
+        const consumedPizza = this.player.popTopPizza();
+        if (!consumedPizza) return;
 
         const startWorld = new THREE.Vector3();
-        pizzaMesh.getWorldPosition(startWorld);
+        consumedPizza.getWorldPosition(startWorld);
 
-        pizzaMesh.position.copy(startWorld);
-        pizzaMesh.rotation.set(0, 0, 0);
-        this.scene.add(pizzaMesh);
+        const boxMesh = PizzaStation.createPizzaBoxMesh();
+        boxMesh.position.copy(startWorld);
+        this.scene.add(boxMesh);
 
+        const stackHeight = this.counterBoxStack.children.length * 0.22;
         const targetWorld = new THREE.Vector3(
             this.deliveryCounter.position.x,
-            1.44,
+            1.26 + stackHeight,
             this.deliveryCounter.position.z
         );
 
         this.flyingPizzas.push({
-            mesh: pizzaMesh,
+            mesh: boxMesh,
             start: startWorld,
             target: targetWorld,
             elapsed: 0,
@@ -361,9 +402,44 @@ export class GameEngine {
 
             if (t >= 1) {
                 this.scene.remove(item.mesh);
-                this.money += item.earned;
+
+                const boxOnCounter = PizzaStation.createPizzaBoxMesh();
+                boxOnCounter.position.set(0, this.counterBoxStack.children.length * 0.22, 0);
+                this.counterBoxStack.add(boxOnCounter);
+
+                const finalPayout = this.customers.onBoxReadyAtCounter(item.earned, boxOnCounter);
+                this.money += finalPayout;
                 this.deliveryCounter.triggerDeliveryFeedback();
                 this.flyingPizzas.splice(i, 1);
+            }
+        }
+    }
+
+    private updateTrashFlow(): void {
+        for (const table of this.tables) {
+            if (table.tryPickupEmptyBox(this.player.mesh.position)) {
+                const trashBox = PizzaStation.createPizzaBoxMesh();
+                trashBox.scale.setScalar(0.62);
+                trashBox.position.set(
+                    0,
+                    this.player.getStackCount() * 0.16 + this.trashCount * 0.18,
+                    0
+                );
+                this.trashStack.add(trashBox);
+                this.trashCount++;
+            }
+        }
+
+        if (this.trashCount > 0) {
+            const distToBin = Math.hypot(
+                this.player.mesh.position.x - this.trashBin.position.x,
+                this.player.mesh.position.z - this.trashBin.position.z
+            );
+            if (distToBin <= 2.4) {
+                this.money += this.trashCount * 10;
+                this.trashCount = 0;
+                this.trashStack.clear();
+                this.trashBin.triggerFeedback();
             }
         }
     }
@@ -374,10 +450,17 @@ export class GameEngine {
 
         this.station.update(dt);
         this.deliveryCounter.update(dt);
+        this.trashBin.update(dt);
+        this.customers.update(dt);
+
+        for (const table of this.tables) {
+            table.update(dt);
+        }
 
         const dir = this.input.getDirection();
         this.player.update(dt, dir);
         this.applyWorldCollisions();
+        this.updateTrashFlow();
 
         const collected = this.station.collectPizzasForPlayer(
             this.player.mesh.position,
@@ -404,7 +487,8 @@ export class GameEngine {
             this.money,
             this.player.getStackCount(),
             this.player.maxStack,
-            this.upgrades.getViews()
+            this.upgrades.getViews(),
+            this.customers.getServedTotal()
         );
 
         this.camera.position.x = this.player.mesh.position.x + 12;

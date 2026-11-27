@@ -3,8 +3,8 @@ import * as THREE from "three";
 export class DeliveryCounter {
     public readonly mesh: THREE.Group;
     public readonly position: THREE.Vector3;
-    public readonly halfExtents = { x: 1.35, z: 1.35 };
-    private readonly dropZoneOffset = new THREE.Vector3(0, 0, 2.2);
+    public readonly halfExtents = { x: 1.4, z: 1.2 };
+    private readonly dropZoneOffset = new THREE.Vector3(0, 0, 2.1);
     private readonly dropRadius = 1.65;
     private readonly deliveryInterval = 0.18;
     private readonly pizzaValue = 15;
@@ -18,58 +18,44 @@ export class DeliveryCounter {
         this.mesh = new THREE.Group();
         this.mesh.position.copy(this.position);
 
-        const counterMat = new THREE.MeshStandardMaterial({
-            color: 0x16a34a,
-            roughness: 0.42,
+        const redBodyMat = new THREE.MeshStandardMaterial({
+            color: 0xdc2626,
+            roughness: 0.45,
             metalness: 0.05
         });
-        const clothMat = new THREE.MeshStandardMaterial({
-            color: 0xfef9c3,
-            roughness: 0.72,
-            metalness: 0.02
+        const accentBlueMat = new THREE.MeshStandardMaterial({
+            color: 0x0284c7,
+            roughness: 0.42,
+            metalness: 0.06
         });
         const topMat = new THREE.MeshStandardMaterial({
-            color: 0xdcfce7,
+            color: 0xfef9c3,
             roughness: 0.35,
             metalness: 0.04
         });
-        const accentMat = new THREE.MeshStandardMaterial({
-            color: 0x4ade80,
-            roughness: 0.35,
-            metalness: 0.08
-        });
 
         const base = new THREE.Mesh(
-            new THREE.CylinderGeometry(1.22, 1.3, 1.15, 28),
-            counterMat
+            new THREE.BoxGeometry(2.7, 1.05, 1.9),
+            redBodyMat
         );
-        base.position.y = 0.575;
+        base.position.y = 0.525;
         base.castShadow = true;
         base.receiveShadow = true;
 
-        // Forro decorativo claro sobre o balcão
-        const cloth = new THREE.Mesh(
-            new THREE.CylinderGeometry(1.38, 1.4, 0.06, 28),
-            clothMat
+        const frontTrim = new THREE.Mesh(
+            new THREE.BoxGeometry(2.74, 0.22, 1.94),
+            accentBlueMat
         );
-        cloth.position.y = 1.19;
-        cloth.castShadow = true;
-        cloth.receiveShadow = true;
+        frontTrim.position.y = 0.55;
+        frontTrim.castShadow = true;
 
         const top = new THREE.Mesh(
-            new THREE.CylinderGeometry(1.28, 1.28, 0.14, 28),
+            new THREE.BoxGeometry(2.85, 0.18, 2.05),
             topMat
         );
-        top.position.y = 1.27;
+        top.position.y = 1.14;
         top.castShadow = true;
         top.receiveShadow = true;
-
-        const rim = new THREE.Mesh(
-            new THREE.TorusGeometry(1.28, 0.05, 12, 32),
-            accentMat
-        );
-        rim.rotation.x = Math.PI / 2;
-        rim.position.y = 1.15;
 
         this.dropRing = new THREE.Mesh(
             new THREE.RingGeometry(0.95, 1.25, 32),
@@ -85,7 +71,7 @@ export class DeliveryCounter {
             this.dropZoneOffset.z
         );
 
-        this.mesh.add(base, cloth, top, rim, this.dropRing);
+        this.mesh.add(base, frontTrim, top, this.dropRing);
     }
 
     public getDeliveredCount(): number {
@@ -101,8 +87,8 @@ export class DeliveryCounter {
         if (this.pulseTime > 0) {
             this.pulseTime = Math.max(0, this.pulseTime - dt);
             const t = 1 - this.pulseTime / 0.22;
-            const bounce = Math.sin(t * Math.PI) * 0.18;
-            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.75, 1 + bounce);
+            const bounce = Math.sin(t * Math.PI) * 0.16;
+            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.7, 1 + bounce);
         } else {
             this.mesh.scale.set(1, 1, 1);
         }

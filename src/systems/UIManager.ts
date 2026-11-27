@@ -1,99 +1,98 @@
 import type { UpgradeId, UpgradeView } from "./UpgradeSystem";
 
 export class UIManager {
-    private moneyEl: HTMLSpanElement;
-    private stackEl: HTMLSpanElement;
-    private upgradesEl: HTMLDivElement;
-    private buttons = new Map<UpgradeId, HTMLButtonElement>();
-    private onUpgradeClick?: (id: UpgradeId) => void;
+    private readonly root: HTMLDivElement;
+    private readonly moneyEl: HTMLSpanElement;
+    private readonly stackEl: HTMLSpanElement;
+    private readonly servedEl: HTMLSpanElement;
+    private readonly upgradesContainer: HTMLDivElement;
+    private readonly onUpgradeClick: (id: UpgradeId) => void;
 
-    constructor(container: HTMLElement, onUpgradeClick?: (id: UpgradeId) => void) {
+    constructor(container: HTMLElement, onUpgradeClick: (id: UpgradeId) => void) {
         this.onUpgradeClick = onUpgradeClick;
 
-        const hud = document.createElement("div");
-        hud.style.position = "absolute";
-        hud.style.top = "16px";
-        hud.style.left = "16px";
-        hud.style.display = "flex";
-        hud.style.flexDirection = "column";
-        hud.style.gap = "10px";
-        hud.style.fontFamily = "system-ui, -apple-system, sans-serif";
-        hud.style.userSelect = "none";
+        this.root = document.createElement("div");
+        this.root.style.position = "fixed";
+        this.root.style.inset = "0";
+        this.root.style.pointerEvents = "none";
+        this.root.style.fontFamily = "system-ui, -apple-system, sans-serif";
+        this.root.style.zIndex = "10";
 
-        const statusRow = document.createElement("div");
-        statusRow.style.display = "flex";
-        statusRow.style.gap = "12px";
-        statusRow.style.pointerEvents = "none";
+        const topBar = document.createElement("div");
+        topBar.style.display = "flex";
+        topBar.style.gap = "12px";
+        topBar.style.padding = "16px";
+        topBar.style.flexWrap = "wrap";
 
-        const badgeStyle = `
-      background: rgba(15, 23, 42, 0.85);
-      color: #f8fafc;
-      padding: 10px 16px;
-      border-radius: 12px;
-      font-weight: 700;
-      font-size: 16px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    `;
+        const moneyBadge = this.createBadge("#16a34a");
+        moneyBadge.innerHTML = `Caixa: $<span id="hud-money">0</span>`;
 
-        const moneyBox = document.createElement("div");
-        moneyBox.style.cssText = badgeStyle;
-        moneyBox.innerHTML = `Caixa: <span id="hud-money" style="color: #4ade80;">$0</span>`;
+        const stackBadge = this.createBadge("#ea580c");
+        stackBadge.innerHTML = `Pilha: <span id="hud-stack">0/12</span>`;
 
-        const stackBox = document.createElement("div");
-        stackBox.style.cssText = badgeStyle;
-        stackBox.innerHTML = `Pilha: <span id="hud-stack" style="color: #fbbf24;">0/12</span>`;
+        const servedBadge = this.createBadge("#0284c7");
+        servedBadge.innerHTML = `Clientes: <span id="hud-served">0</span>`;
 
-        statusRow.append(moneyBox, stackBox);
+        topBar.append(moneyBadge, stackBadge, servedBadge);
 
-        this.upgradesEl = document.createElement("div");
-        this.upgradesEl.style.display = "flex";
-        this.upgradesEl.style.flexWrap = "wrap";
-        this.upgradesEl.style.gap = "8px";
-        this.upgradesEl.style.pointerEvents = "auto";
+        this.upgradesContainer = document.createElement("div");
+        this.upgradesContainer.style.position = "fixed";
+        this.upgradesContainer.style.right = "16px";
+        this.upgradesContainer.style.bottom = "16px";
+        this.upgradesContainer.style.display = "flex";
+        this.upgradesContainer.style.flexDirection = "column";
+        this.upgradesContainer.style.gap = "8px";
+        this.upgradesContainer.style.pointerEvents = "auto";
 
-        hud.append(statusRow, this.upgradesEl);
-        container.style.position = "relative";
-        container.appendChild(hud);
+        this.root.append(topBar, this.upgradesContainer);
+        container.appendChild(this.root);
 
-        this.moneyEl = moneyBox.querySelector("#hud-money") as HTMLSpanElement;
-        this.stackEl = stackBox.querySelector("#hud-stack") as HTMLSpanElement;
+        this.moneyEl = topBar.querySelector("#hud-money") as HTMLSpanElement;
+        this.stackEl = topBar.querySelector("#hud-stack") as HTMLSpanElement;
+        this.servedEl = topBar.querySelector("#hud-served") as HTMLSpanElement;
     }
 
-    public update(money: number, currentStack: number, maxStack: number, upgrades: UpgradeView[] = []): void {
-        this.moneyEl.textContent = `$${money}`;
-        this.stackEl.textContent = `${currentStack}/${maxStack}`;
+    private createBadge(bgColor: string): HTMLDivElement {
+        const el = document.createElement("div");
+        el.style.background = bgColor;
+        el.style.color = "#ffffff";
+        el.style.padding = "8px 14px";
+        el.style.borderRadius = "999px";
+        el.style.fontWeight = "700";
+        el.style.fontSize = "14px";
+        el.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.18)";
+        return el;
+    }
 
+    public update(
+        money: number,
+        stackCount: number,
+        maxStack: number,
+        upgrades: UpgradeView[],
+        servedCustomers = 0
+    ): void {
+        this.moneyEl.textContent = String(money);
+        this.stackEl.textContent = `${stackCount}/${maxStack}`;
+        this.servedEl.textContent = String(servedCustomers);
+
+        this.upgradesContainer.innerHTML = "";
         for (const upg of upgrades) {
-            let btn = this.buttons.get(upg.id);
-            if (!btn) {
-                btn = document.createElement("button");
-                btn.type = "button";
-                btn.style.border = "none";
-                btn.style.borderRadius = "10px";
-                btn.style.padding = "8px 12px";
-                btn.style.fontWeight = "700";
-                btn.style.fontSize = "13px";
-                btn.style.cursor = "pointer";
-                btn.style.boxShadow = "0 3px 10px rgba(0,0,0,0.18)";
-                btn.style.transition = "transform 0.1s ease, opacity 0.15s ease";
-
-                // Evita que clicar no botão inicie arraste de câmera/movimento no canvas
-                btn.addEventListener("pointerdown", (e) => e.stopPropagation());
-                btn.addEventListener("click", () => {
-                    this.onUpgradeClick?.(upg.id);
-                });
-
-                this.buttons.set(upg.id, btn);
-                this.upgradesEl.appendChild(btn);
-            }
-
             const canAfford = money >= upg.cost;
+            const btn = document.createElement("button");
+            btn.type = "button";
             btn.disabled = !canAfford;
-            btn.style.background = canAfford ? "#2563eb" : "rgba(30, 41, 59, 0.65)";
-            btn.style.color = canAfford ? "#ffffff" : "#94a3b8";
-            btn.style.opacity = canAfford ? "1" : "0.75";
+            btn.style.padding = "10px 14px";
+            btn.style.borderRadius = "12px";
+            btn.style.border = "none";
+            btn.style.fontWeight = "700";
+            btn.style.fontSize = "13px";
             btn.style.cursor = canAfford ? "pointer" : "not-allowed";
-            btn.textContent = `${upg.label} (Nv.${upg.level}) • $${upg.cost}`;
+            btn.style.background = canAfford ? "#1e293b" : "#94a3b8";
+            btn.style.color = "#ffffff";
+            btn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.2)";
+            btn.textContent = `${upg.label} (Nv.${upg.level}) - $${upg.cost}`;
+            btn.addEventListener("click", () => this.onUpgradeClick(upg.id));
+            this.upgradesContainer.appendChild(btn);
         }
     }
 }
