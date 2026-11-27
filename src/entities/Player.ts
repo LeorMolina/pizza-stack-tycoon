@@ -2,8 +2,8 @@ import * as THREE from "three";
 
 export class Player {
     public readonly mesh: THREE.Group;
+    public readonly maxStack = 12;
     private readonly speed = 6.5;
-    private readonly maxStack = 12;
     private readonly stackContainer: THREE.Group;
     private stack: THREE.Mesh[] = [];
     private swayOffsets: number[] = [];
@@ -33,6 +33,10 @@ export class Player {
         this.mesh.add(torso, head, cap, this.stackContainer);
     }
 
+    public getStackCount(): number {
+        return this.stack.length;
+    }
+
     public getAvailableSlots(): number {
         return Math.max(0, this.maxStack - this.stack.length);
     }
@@ -49,6 +53,18 @@ export class Player {
         }
     }
 
+    public removeFromStack(count: number): number {
+        let removed = 0;
+        for (let i = 0; i < count; i++) {
+            const topPizza = this.stack.pop();
+            if (!topPizza) break;
+            this.swayOffsets.pop();
+            this.stackContainer.remove(topPizza);
+            removed++;
+        }
+        return removed;
+    }
+
     update(dt: number, dir: { x: number; z: number }): void {
         const moveMag = Math.hypot(dir.x, dir.z);
         if (moveMag >= 0.05) {
@@ -59,7 +75,6 @@ export class Player {
             this.mesh.rotation.y = targetAngle;
         }
 
-        // Efeito sutil de balanço na pilha conforme o nível da pizza
         const swayTarget = moveMag >= 0.05 ? -0.06 : 0;
         for (let i = 0; i < this.stack.length; i++) {
             const pizza = this.stack[i];
