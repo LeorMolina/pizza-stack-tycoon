@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Player } from "../entities/Player";
+import { PizzaStation } from "../entities/PizzaStation";
 import { InputController } from "../systems/InputController";
 
 export class GameEngine {
@@ -7,6 +8,7 @@ export class GameEngine {
     private camera: THREE.PerspectiveCamera;
     private renderer: THREE.WebGLRenderer;
     private player: Player;
+    private station: PizzaStation;
     private input: InputController;
     private lastTime = performance.now();
 
@@ -40,6 +42,9 @@ export class GameEngine {
         floor.receiveShadow = true;
         this.scene.add(floor);
 
+        this.station = new PizzaStation(-4, -4);
+        this.scene.add(this.station.mesh);
+
         this.player = new Player();
         this.scene.add(this.player.mesh);
 
@@ -59,8 +64,18 @@ export class GameEngine {
         const dt = Math.min((now - this.lastTime) / 1000, 0.05);
         this.lastTime = now;
 
+        this.station.update(dt);
+
         const dir = this.input.getDirection();
         this.player.update(dt, dir);
+
+        const collected = this.station.collectPizzasForPlayer(
+            this.player.mesh.position,
+            this.player.getAvailableSlots()
+        );
+        if (collected.length > 0) {
+            this.player.addToStack(collected);
+        }
 
         this.camera.position.x = this.player.mesh.position.x + 12;
         this.camera.position.z = this.player.mesh.position.z + 12;
