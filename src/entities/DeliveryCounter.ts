@@ -3,118 +3,129 @@ import * as THREE from "three";
 export class DeliveryCounter {
     public readonly mesh: THREE.Group;
     public readonly position: THREE.Vector3;
-    public readonly halfExtents = { x: 1.4, z: 1.2 };
-    private readonly dropZoneOffset = new THREE.Vector3(0, 0, 2.1);
-    private readonly dropRadius = 1.65;
-    private readonly deliveryInterval = 0.18;
-    private readonly pizzaValue = 15;
-    private deliveryTimer = 0;
+    public readonly halfExtents = { x: 1.35, z: 0.75 };
+    private readonly ringMesh: THREE.Mesh;
+    private readonly dropZoneOffset = new THREE.Vector3(0, 0.03, -1.55);
+    private readonly dropRadius = 1.45;
+    private readonly dropInterval = 0.16;
+    private readonly baseReward: number;
+    private dropTimer = 0;
     private pulseTime = 0;
-    private deliveredCount = 0;
-    private readonly dropRing: THREE.Mesh;
 
-    constructor(x: number, z: number) {
+    constructor(x: number, z: number, accentColor = 0x16a34a, baseReward = 15) {
         this.position = new THREE.Vector3(x, 0, z);
+        this.baseReward = baseReward;
+
         this.mesh = new THREE.Group();
         this.mesh.position.copy(this.position);
 
-        const redBodyMat = new THREE.MeshStandardMaterial({
-            color: 0xdc2626,
-            roughness: 0.45,
+        const baseMat = new THREE.MeshStandardMaterial({
+            color: 0xf8fafc,
+            roughness: 0.5,
+            metalness: 0.03
+        });
+        const accentMat = new THREE.MeshStandardMaterial({
+            color: accentColor,
+            roughness: 0.42,
             metalness: 0.05
         });
-        const accentBlueMat = new THREE.MeshStandardMaterial({
-            color: 0x0284c7,
-            roughness: 0.42,
-            metalness: 0.06
-        });
         const topMat = new THREE.MeshStandardMaterial({
-            color: 0xfef9c3,
+            color: 0xfffbeb,
             roughness: 0.35,
-            metalness: 0.04
+            metalness: 0.03
         });
 
-        const base = new THREE.Mesh(
-            new THREE.BoxGeometry(2.7, 1.05, 1.9),
-            redBodyMat
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(2.6, 1.05, 1.4),
+            baseMat
         );
-        base.position.y = 0.525;
-        base.castShadow = true;
-        base.receiveShadow = true;
+        body.position.y = 0.525;
+        body.castShadow = true;
+        body.receiveShadow = true;
 
-        const frontTrim = new THREE.Mesh(
-            new THREE.BoxGeometry(2.74, 0.22, 1.94),
-            accentBlueMat
+        const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(2.66, 0.22, 1.46),
+            accentMat
         );
-        frontTrim.position.y = 0.55;
-        frontTrim.castShadow = true;
+        stripe.position.y = 0.65;
+        stripe.castShadow = true;
 
         const top = new THREE.Mesh(
-            new THREE.BoxGeometry(2.85, 0.18, 2.05),
+            new THREE.BoxGeometry(2.74, 0.14, 1.54),
             topMat
         );
-        top.position.y = 1.14;
+        top.position.y = 1.12;
         top.castShadow = true;
         top.receiveShadow = true;
 
-        this.dropRing = new THREE.Mesh(
-            new THREE.RingGeometry(0.95, 1.25, 32),
+        const totemPost = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.55, 12),
+            accentMat
+        );
+        totemPost.position.set(-1.12, 1.42, 0.45);
+        totemPost.castShadow = true;
+
+        const totemBadge = new THREE.Mesh(
+            new THREE.BoxGeometry(0.36, 0.28, 0.12),
+            accentMat
+        );
+        totemBadge.position.set(-1.12, 1.72, 0.45);
+        totemBadge.castShadow = true;
+
+        this.ringMesh = new THREE.Mesh(
+            new THREE.RingGeometry(1.12, 1.38, 32),
             new THREE.MeshBasicMaterial({
-                color: 0x22c55e,
+                color: accentColor,
                 side: THREE.DoubleSide
             })
         );
-        this.dropRing.rotation.x = -Math.PI / 2;
-        this.dropRing.position.set(
-            this.dropZoneOffset.x,
-            0.03,
-            this.dropZoneOffset.z
-        );
+        this.ringMesh.rotation.x = -Math.PI / 2;
+        this.ringMesh.position.copy(this.dropZoneOffset);
 
-        this.mesh.add(base, frontTrim, top, this.dropRing);
-    }
-
-    public getDeliveredCount(): number {
-        return this.deliveredCount;
+        this.mesh.add(body, stripe, top, totemPost, totemBadge, this.ringMesh);
     }
 
     public triggerDeliveryFeedback(): void {
-        this.pulseTime = 0.22;
-        this.deliveredCount++;
+        this.pulseTime = 0.2;
     }
 
-    update(dt: number): void {
+    public update(dt: number): void {
         if (this.pulseTime > 0) {
             this.pulseTime = Math.max(0, this.pulseTime - dt);
-            const t = 1 - this.pulseTime / 0.22;
-            const bounce = Math.sin(t * Math.PI) * 0.16;
-            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.7, 1 + bounce);
+            const t = 1 - this.pulseTime / 0.2;
+            const bounce = Math.sin(t * Math.PI) * 0.08;
+            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.5, 1 + bounce);
         } else {
             this.mesh.scale.set(1, 1, 1);
         }
 
-        const pulseScale = 1 + Math.sin(performance.now() * 0.006) * 0.05;
-        this.dropRing.scale.set(pulseScale, pulseScale, 1);
+        const ringPulse = 1 + Math.sin(performance.now() * 0.006) * 0.04;
+        this.ringMesh.scale.set(ringPulse, ringPulse, 1);
     }
 
-    updateDelivery(
+    public updateDelivery(
         dt: number,
         playerPos: THREE.Vector3,
-        playerStackCount: number
+        availableStackCount: number
     ): { delivered: number; earned: number } {
-        const dropWorldX = this.position.x + this.dropZoneOffset.x;
-        const dropWorldZ = this.position.z + this.dropZoneOffset.z;
-        const dist = Math.hypot(playerPos.x - dropWorldX, playerPos.z - dropWorldZ);
-
-        if (dist > this.dropRadius || playerStackCount <= 0) {
-            this.deliveryTimer = 0;
+        if (availableStackCount <= 0) {
+            this.dropTimer = 0;
             return { delivered: 0, earned: 0 };
         }
 
-        this.deliveryTimer += dt;
-        if (this.deliveryTimer >= this.deliveryInterval) {
-            this.deliveryTimer = 0;
-            return { delivered: 1, earned: this.pizzaValue };
+        const zoneX = this.position.x + this.dropZoneOffset.x;
+        const zoneZ = this.position.z + this.dropZoneOffset.z;
+        const dist = Math.hypot(playerPos.x - zoneX, playerPos.z - zoneZ);
+
+        if (dist > this.dropRadius) {
+            this.dropTimer = 0;
+            return { delivered: 0, earned: 0 };
+        }
+
+        this.dropTimer += dt;
+        if (this.dropTimer >= this.dropInterval) {
+            this.dropTimer = 0;
+            return { delivered: 1, earned: this.baseReward };
         }
 
         return { delivered: 0, earned: 0 };

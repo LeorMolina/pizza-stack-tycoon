@@ -7,6 +7,7 @@ export class UIManager {
     private readonly servedEl: HTMLSpanElement;
     private readonly levelEl: HTMLSpanElement;
     private readonly upgradesContainer: HTMLDivElement;
+    private readonly upgradeButtons = new Map<UpgradeId, HTMLButtonElement>();
     private readonly onUpgradeClick: (id: UpgradeId) => void;
 
     constructor(container: HTMLElement, onUpgradeClick: (id: UpgradeId) => void) {
@@ -101,6 +102,25 @@ export class UIManager {
         }, 780);
     }
 
+    private getOrCreateUpgradeButton(id: UpgradeId): HTMLButtonElement {
+        let btn = this.upgradeButtons.get(id);
+        if (!btn) {
+            btn = document.createElement("button");
+            btn.type = "button";
+            btn.style.padding = "10px 14px";
+            btn.style.borderRadius = "12px";
+            btn.style.border = "none";
+            btn.style.fontWeight = "700";
+            btn.style.fontSize = "13px";
+            btn.style.color = "#ffffff";
+            btn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.2)";
+            btn.addEventListener("click", () => this.onUpgradeClick(id));
+            this.upgradeButtons.set(id, btn);
+            this.upgradesContainer.appendChild(btn);
+        }
+        return btn;
+    }
+
     public update(
         money: number,
         stackCount: number,
@@ -115,24 +135,20 @@ export class UIManager {
         this.servedEl.textContent = String(servedCustomers);
         this.levelEl.textContent = `${level} (${levelProgress})`;
 
-        this.upgradesContainer.innerHTML = "";
         for (const upg of upgrades) {
             const canAfford = money >= upg.cost;
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.disabled = !canAfford;
-            btn.style.padding = "10px 14px";
-            btn.style.borderRadius = "12px";
-            btn.style.border = "none";
-            btn.style.fontWeight = "700";
-            btn.style.fontSize = "13px";
-            btn.style.cursor = canAfford ? "pointer" : "not-allowed";
-            btn.style.background = canAfford ? "#1e293b" : "#94a3b8";
-            btn.style.color = "#ffffff";
-            btn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.2)";
-            btn.textContent = `${upg.label} (Nv.${upg.level}) - R$ ${upg.cost}`;
-            btn.addEventListener("click", () => this.onUpgradeClick(upg.id));
-            this.upgradesContainer.appendChild(btn);
+            const btn = this.getOrCreateUpgradeButton(upg.id);
+            const levelTag = upg.level > 0 ? ` (Nv.${upg.level})` : "";
+            const label = `${upg.label}${levelTag} - R$ ${upg.cost}`;
+
+            if (btn.disabled !== !canAfford) {
+                btn.disabled = !canAfford;
+                btn.style.cursor = canAfford ? "pointer" : "not-allowed";
+                btn.style.background = canAfford ? "#1e293b" : "#94a3b8";
+            }
+            if (btn.textContent !== label) {
+                btn.textContent = label;
+            }
         }
     }
 }

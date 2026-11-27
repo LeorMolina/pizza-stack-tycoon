@@ -5,50 +5,68 @@ import { DiningTable } from "../entities/DiningTable";
 
 export class CustomerSystem {
     private readonly scene: THREE.Scene;
-    private readonly queueAnchor: THREE.Vector3;
-    private readonly counterPickupPos: THREE.Vector3;
+    private readonly tableCounterPickupPos: THREE.Vector3;
+    private readonly deliveryQueueAnchor: THREE.Vector3;
     private readonly tables: DiningTable[];
     private readonly exitPos: THREE.Vector3;
-    private readonly maxQueue = 3;
-    private readonly spawnInterval = 4.5;
+    private readonly maxDeliveryQueue = 3;
+    private readonly spawnInterval = 4.0;
     private readonly palette = [0xec4899, 0x8b5cf6, 0x06b6d4, 0xf97316, 0x10b981];
-    private queue: Customer[] = [];
+    private deliveryQueue: Customer[] = [];
     private seatedCustomers: Customer[] = [];
     private reservedTables: Set<number> = new Set();
     private leaving: Customer[] = [];
-    private spawnTimer = 1.5;
+    private spawnTimer = 1.2;
     private servedTotal = 0;
 
     constructor(
         scene: THREE.Scene,
-        counterPos: THREE.Vector3,
+        tableCounterPos: THREE.Vector3,
+        deliveryCounterPos: THREE.Vector3,
         tables: DiningTable[] = []
     ) {
         this.scene = scene;
-        this.queueAnchor = new THREE.Vector3(counterPos.x + 2.6, 0, counterPos.z + 0.6);
-        this.counterPickupPos = new THREE.Vector3(counterPos.x + 1.5, 0, counterPos.z + 1.8);
+        this.tableCounterPickupPos = new THREE.Vector3(
+            tableCounterPos.x,
+            0,
+            tableCounterPos.z + 1.65
+        );
+        this.deliveryQueueAnchor = new THREE.Vector3(
+            deliveryCounterPos.x,
+            0,
+            deliveryCounterPos.z + 1.65
+        );
         this.tables = tables;
-        this.exitPos = new THREE.Vector3(9.2, 0, counterPos.z + 2.5);
-    }
-
-    public getQueueCount(): number {
-        return this.queue.length;
-    }
-
-    public getSeatedCount(): number {
-        return this.seatedCustomers.length;
+        this.exitPos = new THREE.Vector3(9.2, 0, deliveryCounterPos.z + 2.4);
     }
 
     public getServedTotal(): number {
         return this.servedTotal;
     }
 
-    private getQueueSlotPosition(index: number): THREE.Vector3 {
+    private getDeliverySlotPosition(index: number): THREE.Vector3 {
         return new THREE.Vector3(
-            this.queueAnchor.x + index * 1.4,
+            this.deliveryQueueAnchor.x + index * 1.15,
             0,
-            this.queueAnchor.z + index * 0.6
+            this.deliveryQueueAnchor.z + index * 0.45
         );
+    }
+
+    private getTableCounterSlotPosition(index: number): THREE.Vector3 {
+        return new THREE.Vector3(
+            this.tableCounterPickupPos.x - index * 1.15,
+            0,
+            this.tableCounterPickupPos.z + index * 0.35
+        );
+    }
+
+    private updateTableCounterQueuePositions(): void {
+        const waitingAtCounter = this.seatedCustomers.filter(
+            (c) => c.dineInStage === "going_to_counter" && !c.served
+        );
+        waitingAtCounter.forEach((c, idx) => {
+            c.setTargetPosition(this.getTableCounterSlotPosition(idx));
+        });
     }
 
     private findFreeTableIndex(): number | null {
@@ -63,18 +81,18 @@ export class CustomerSystem {
     private spawnCustomer(restaurantLevel: number): void {
         const freeTable = this.findFreeTableIndex();
         const canSeat = freeTable !== null;
-        const canQueue = this.queue.length < this.maxQueue;
+        const canQueue = this.deliveryQueue.length < this.maxDeliveryQueue;
 
         if (!canSeat && !canQueue) return;
 
-        const chooseDineIn = canSeat && (!canQueue || Math.random() < 0.6);
+        const chooseDineIn = canSeat && (!canQueue || Math.random() < 0.55);
         const mode: CustomerMode = chooseDineIn ? "dine_in" : "takeaway";
         const desiredPizzas = restaurantLevel >= 2 && Math.random() < 0.4 ? 2 : 1;
         const color = this.palette[Math.floor(Math.random() * this.palette.length)];
 
         if (mode === "dine_in" && freeTable !== null) {
             const table = this.tables[freeTable];
-            const spawnPos = new THREE.Vector3(9.5, 0, this.counterPickupPos.z);
+            const spawnPos = new THREE.Vector3(9.5, 0, this.tableCounterPickupPos.z + 0.9);
 
             const customer = new Customer(
                 spawnPos,
@@ -82,23 +100,23 @@ export class CustomerSystem {
                 desiredPizzas,
                 color,
                 freeTable,
-                this.counterPickupPos,
+                this.tableCounterPickupPos,
                 table.position
             );
-            customer.startGoingToCounter();
             this.reservedTables.add(freeTable);
             this.seatedCustomers.push(customer);
+            this.updateTableCounterQueuePositions();
             this.scene.add(customer.mesh);
             return;
         }
 
-        const slotIndex = this.queue.length;
-        const targetSlot = this.getQueueSlotPosition(slotIndex);
+        const slotIndex = this.deliveryQueue.length;
+        const targetSlot = this.getDeliverySlotPosition(slotIndex);
         const spawnPos = new THREE.Vector3(9.5, 0, targetSlot.z);
 
         const customer = new Customer(spawnPos, "takeaway", desiredPizzas, color, null);
         customer.setTargetPosition(targetSlot);
-        this.queue.push(customer);
+        this.deliveryQueue.push(customer);
         this.scene.add(customer.mesh);
     }
 
@@ -120,23 +138,35 @@ export class CustomerSystem {
         this.leaving.push(customer);
     }
 
-    public tryServeFromCounter(boxMesh: THREE.Object3D, restaurantLevel: number): number {
+    public tryServeTableCounter(boxMesh: THREE.Object3D, restaurantLevel: number): number {
         const levelBonus = (restaurantLevel - 1) * 2;
+        const waitingAtCounter = this.seatedCustomers.filter(
+            (c) => c.dineInStage === "going_to_counter" && !c.served
+        );
+        const frontTableCustomer = waitingAtCounter[0];
 
-        const activeTableCustomer = this.seatedCustomers.find((c) => c.isReadyAtCounter());
-        if (activeTableCustomer) {
-            activeTableCustomer.receiveBox(boxMesh);
+        if (frontTableCustomer && frontTableCustomer.isReadyAtCounter()) {
+            const completed = frontTableCustomer.receiveBox(boxMesh);
+            if (completed) {
+                this.updateTableCounterQueuePositions();
+            }
             return 16 + levelBonus;
         }
 
-        const frontQueue = this.queue[0];
+        return 0;
+    }
+
+    public tryServeDeliveryCounter(boxMesh: THREE.Object3D, restaurantLevel: number): number {
+        const levelBonus = (restaurantLevel - 1) * 2;
+        const frontQueue = this.deliveryQueue[0];
+
         if (frontQueue && frontQueue.isReadyAtCounter()) {
             const completed = frontQueue.receiveBox(boxMesh);
             if (completed) {
-                this.queue.shift();
+                this.deliveryQueue.shift();
                 this.sendCustomerToExit(frontQueue);
-                this.queue.forEach((c, idx) => {
-                    c.setTargetPosition(this.getQueueSlotPosition(idx));
+                this.deliveryQueue.forEach((c, idx) => {
+                    c.setTargetPosition(this.getDeliverySlotPosition(idx));
                 });
             }
             return 12 + levelBonus;
@@ -152,7 +182,7 @@ export class CustomerSystem {
             this.spawnCustomer(restaurantLevel);
         }
 
-        for (const c of this.queue) {
+        for (const c of this.deliveryQueue) {
             c.update(dt);
         }
 
