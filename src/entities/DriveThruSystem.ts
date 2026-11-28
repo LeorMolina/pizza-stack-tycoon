@@ -14,13 +14,14 @@ interface CarOrder {
 
 export class DriveThruSystem {
     public readonly unlockCost = 350;
-    public readonly padPosition = new THREE.Vector3(-8.4, 0, -3.8);
-    public readonly counterPosition = new THREE.Vector3(-8.8, 0, -2.5);
-    public readonly dropZoneCenter = new THREE.Vector3(-7.4, 0, -2.5);
+    public readonly padPosition = new THREE.Vector3(-7.4, 0, -4.4);
+    public readonly counterPosition = new THREE.Vector3(-9.15, 0, -4.4);
+    public readonly dropZoneCenter = new THREE.Vector3(-7.65, 0, -4.4);
 
     private readonly scene: THREE.Scene;
     private readonly padGroup: THREE.Group;
     private readonly padRing: THREE.Mesh;
+    private readonly counterGroup: THREE.Group;
     private readonly builtGroup: THREE.Group;
     private readonly counterBoxStack: THREE.Group;
     private readonly carsGroup: THREE.Group;
@@ -38,14 +39,21 @@ export class DriveThruSystem {
     constructor(scene: THREE.Scene) {
         this.scene = scene;
 
+        // Balcão em L embaixo das duas janelas (sempre visível desde o início)
+        this.counterGroup = new THREE.Group();
+        this.buildWindowCounter();
+        this.scene.add(this.counterGroup);
+
+        // Zona de compra no chão (ao lado do balcão da janela)
         this.padGroup = new THREE.Group();
         this.padGroup.position.copy(this.padPosition);
         this.padRing = this.buildPurchasePad();
         this.scene.add(this.padGroup);
 
+        // Pista externa, anel de entrega e carros (aparecem ao desbloquear)
         this.builtGroup = new THREE.Group();
         this.builtGroup.visible = false;
-        this.buildRoadAndCounter();
+        this.buildRoadAndDropZone();
         this.scene.add(this.builtGroup);
 
         this.counterBoxStack = new THREE.Group();
@@ -87,11 +95,46 @@ export class DriveThruSystem {
         });
     }
 
+    private buildWindowCounter(): void {
+        // Braço esquerdo do balcão em L (vermelho coral embaixo das duas janelas)
+        const armLength = 5.5;
+        const armCenterZ = -4.25;
+
+        const plinth = new THREE.Mesh(
+            new THREE.BoxGeometry(1.32, 0.16, armLength - 0.06),
+            new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
+        );
+        plinth.position.set(this.counterPosition.x, 0.08, armCenterZ);
+
+        const counterBase = new THREE.Mesh(
+            new THREE.BoxGeometry(1.4, 0.92, armLength),
+            new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 })
+        );
+        counterBase.position.set(this.counterPosition.x, 0.62, armCenterZ);
+        counterBase.castShadow = true;
+        counterBase.receiveShadow = true;
+
+        const counterStripe = new THREE.Mesh(
+            new THREE.BoxGeometry(1.44, 0.24, armLength + 0.02),
+            new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.35 })
+        );
+        counterStripe.position.set(this.counterPosition.x, 0.88, armCenterZ);
+
+        const counterTop = new THREE.Mesh(
+            new THREE.BoxGeometry(1.48, 0.08, armLength + 0.04),
+            new THREE.MeshStandardMaterial({ color: 0xfef9c3, roughness: 0.35 })
+        );
+        counterTop.position.set(this.counterPosition.x, 1.12, armCenterZ);
+        counterTop.castShadow = true;
+
+        this.counterGroup.add(plinth, counterBase, counterStripe, counterTop);
+    }
+
     private buildPurchasePad(): THREE.Mesh {
         const padBorder = new THREE.Mesh(
-            new THREE.RingGeometry(1.05, 1.25, 4),
+            new THREE.RingGeometry(0.95, 1.15, 4),
             new THREE.MeshBasicMaterial({
-                color: 0x16a34a,
+                color: 0xef4444,
                 side: THREE.DoubleSide
             })
         );
@@ -100,11 +143,11 @@ export class DriveThruSystem {
         padBorder.position.y = 0.025;
 
         const padFill = new THREE.Mesh(
-            new THREE.PlaneGeometry(1.48, 1.48),
+            new THREE.PlaneGeometry(1.34, 1.34),
             new THREE.MeshBasicMaterial({
-                color: 0x22c55e,
+                color: 0xf87171,
                 transparent: true,
-                opacity: 0.22,
+                opacity: 0.24,
                 side: THREE.DoubleSide
             })
         );
@@ -114,10 +157,10 @@ export class DriveThruSystem {
         const signSprite = this.createSignSprite(
             "DRIVE-THRU",
             `R$ ${this.unlockCost}`,
-            "#15803d"
+            "#dc2626"
         );
         signSprite.position.set(0, 1.35, 0);
-        signSprite.scale.set(2.4, 1.2, 1);
+        signSprite.scale.set(2.3, 1.15, 1);
 
         this.padGroup.add(padBorder, padFill, signSprite);
         return padBorder;
@@ -152,8 +195,7 @@ export class DriveThruSystem {
         return new THREE.Sprite(material);
     }
 
-    private buildRoadAndCounter(): void {
-        // Pista de asfalto externa (x = -12.8)
+    private buildRoadAndDropZone(): void {
         const road = new THREE.Mesh(
             new THREE.BoxGeometry(4.4, 0.22, 24),
             new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85 })
@@ -161,15 +203,13 @@ export class DriveThruSystem {
         road.position.set(-12.7, -0.14, 0);
         road.receiveShadow = true;
 
-        // Calçada / meio-fio junto à parede
         const curb = new THREE.Mesh(
             new THREE.BoxGeometry(0.45, 0.28, 24),
-            new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.6 })
+            new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.6 })
         );
         curb.position.set(-10.48, -0.1, 0);
         curb.receiveShadow = true;
 
-        // Faixas amarelas pontilhadas na pista
         const stripeMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5 });
         for (let z = -10; z <= 10; z += 2.6) {
             const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 1.2), stripeMat);
@@ -177,7 +217,6 @@ export class DriveThruSystem {
             this.builtGroup.add(stripe);
         }
 
-        // Toldo externo sobre a janela do Drive-Thru
         const awning = new THREE.Mesh(
             new THREE.BoxGeometry(1.5, 0.25, 4.6),
             new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.45 })
@@ -185,33 +224,17 @@ export class DriveThruSystem {
         awning.position.set(-10.9, 2.25, -4.1);
         awning.castShadow = true;
 
-        // Balcão interno da janela do Drive-Thru
-        const counterBase = new THREE.Mesh(
-            new THREE.BoxGeometry(1.15, 1.15, 2.3),
-            new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45 })
-        );
-        counterBase.position.set(this.counterPosition.x, 0.575, this.counterPosition.z);
-        counterBase.castShadow = true;
-        counterBase.receiveShadow = true;
-
-        const counterStripe = new THREE.Mesh(
-            new THREE.BoxGeometry(1.2, 0.18, 2.34),
-            new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 })
-        );
-        counterStripe.position.set(this.counterPosition.x, 0.96, this.counterPosition.z);
-
-        // Anel verde no piso da cozinha indicando onde depositar pizzas
         const dropRing = new THREE.Mesh(
-            new THREE.RingGeometry(0.85, 1.05, 32),
+            new THREE.RingGeometry(0.85, 1.08, 32),
             new THREE.MeshBasicMaterial({
-                color: 0x16a34a,
+                color: 0xef4444,
                 side: THREE.DoubleSide
             })
         );
         dropRing.rotation.x = -Math.PI / 2;
         dropRing.position.set(this.dropZoneCenter.x, 0.025, this.dropZoneCenter.z);
 
-        this.builtGroup.add(road, curb, awning, counterBase, counterStripe, dropRing);
+        this.builtGroup.add(road, curb, awning, dropRing);
     }
 
     private createOrderBubble(remaining: number): {
@@ -303,12 +326,12 @@ export class DriveThruSystem {
         if (this.cars.length >= 2) return;
 
         const slotIndex = this.cars.length;
-        const targetZ = -2.6 + slotIndex * 4.4;
+        const targetZ = -3.8 + slotIndex * 4.4;
         const desiredBoxes = Math.min(4, 2 + Math.floor(Math.random() * Math.min(3, restaurantLevel)));
         const color = this.carColors[Math.floor(Math.random() * this.carColors.length)];
 
         const carMesh = this.createCarMesh(color);
-        carMesh.position.set(-12.7, 0, 13.5);
+        carMesh.position.set(-12.7, -0.12, 20.5);
 
         const { sprite, texture } = this.createOrderBubble(desiredBoxes);
         carMesh.add(sprite);
@@ -343,7 +366,7 @@ export class DriveThruSystem {
             playerPos.z - this.padPosition.z
         );
 
-        if (dist <= 1.35 && currentMoney >= this.unlockCost) {
+        if (dist <= 1.3 && currentMoney >= this.unlockCost) {
             this.unlockProgress += dt;
             if (this.unlockProgress >= this.unlockDuration) {
                 this.setUnlocked(true);
@@ -375,7 +398,7 @@ export class DriveThruSystem {
             playerPos.z - this.dropZoneCenter.z
         );
 
-        if (dist <= 1.45) {
+        if (dist <= 1.5) {
             this.dropTimer += dt;
             if (this.dropTimer >= 0.14) {
                 this.dropTimer = 0;
@@ -418,7 +441,6 @@ export class DriveThruSystem {
                     car.state = "waiting";
                 }
             } else if (car.state === "waiting") {
-                // Apenas o primeiro carro da fila (junto à janela) recebe caixas
                 if (i === 0 && this.counterBoxStack.children.length > 0) {
                     const topBox =
                         this.counterBoxStack.children[this.counterBoxStack.children.length - 1];
@@ -435,9 +457,8 @@ export class DriveThruSystem {
                     } else {
                         car.bubbleSprite.visible = false;
                         car.state = "leaving";
-                        // Atualiza o alvo do segundo carro da fila para avançar até a janela
                         if (this.cars[1]) {
-                            this.cars[1].targetZ = -2.6;
+                            this.cars[1].targetZ = -3.8;
                             if (this.cars[1].state === "waiting") {
                                 this.cars[1].state = "arriving";
                             }

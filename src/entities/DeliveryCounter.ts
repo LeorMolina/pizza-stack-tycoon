@@ -3,131 +3,156 @@ import * as THREE from "three";
 export class DeliveryCounter {
     public readonly mesh: THREE.Group;
     public readonly position: THREE.Vector3;
-    public readonly halfExtents = { x: 1.35, z: 0.75 };
+    public readonly halfExtents: THREE.Vector2;
     private readonly ringMesh: THREE.Mesh;
-    private readonly dropZoneOffset = new THREE.Vector3(0, 0.03, -1.55);
-    private readonly dropRadius = 1.45;
-    private readonly dropInterval = 0.16;
-    private readonly baseReward: number;
-    private dropTimer = 0;
-    private pulseTime = 0;
+    private readonly accentColor: number;
+    private readonly payoutPerPizza: number;
+    private deliverTimer = 0;
+    private readonly deliverInterval = 0.14;
+    private bounceTime = 0;
 
-    constructor(x: number, z: number, accentColor = 0x16a34a, baseReward = 15) {
+    constructor(
+        x: number,
+        z: number,
+        accentColor = 0x0284c7,
+        payoutPerPizza = 15,
+        width = 5.4
+    ) {
         this.position = new THREE.Vector3(x, 0, z);
-        this.baseReward = baseReward;
+        this.accentColor = accentColor;
+        this.payoutPerPizza = payoutPerPizza;
+        this.halfExtents = new THREE.Vector2(width / 2, 0.72);
 
         this.mesh = new THREE.Group();
         this.mesh.position.copy(this.position);
 
-        const baseMat = new THREE.MeshStandardMaterial({
-            color: 0xf8fafc,
-            roughness: 0.5,
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.4,
             metalness: 0.03
         });
         const accentMat = new THREE.MeshStandardMaterial({
-            color: accentColor,
-            roughness: 0.42,
+            color: this.accentColor,
+            roughness: 0.35,
             metalness: 0.05
         });
         const topMat = new THREE.MeshStandardMaterial({
-            color: 0xfffbeb,
-            roughness: 0.35,
-            metalness: 0.03
+            color: 0xfef9c3,
+            roughness: 0.35
+        });
+        const darkBaseMat = new THREE.MeshStandardMaterial({
+            color: 0x1e293b,
+            roughness: 0.5
         });
 
-        const body = new THREE.Mesh(
-            new THREE.BoxGeometry(2.6, 1.05, 1.4),
-            baseMat
+        // Rodapé escuro
+        const plinth = new THREE.Mesh(
+            new THREE.BoxGeometry(width - 0.08, 0.16, 1.32),
+            darkBaseMat
         );
-        body.position.y = 0.525;
-        body.castShadow = true;
-        body.receiveShadow = true;
+        plinth.position.y = 0.08;
+        plinth.receiveShadow = true;
 
+        // Corpo principal branco
+        const counter = new THREE.Mesh(
+            new THREE.BoxGeometry(width, 0.92, 1.4),
+            bodyMat
+        );
+        counter.position.y = 0.62;
+        counter.castShadow = true;
+        counter.receiveShadow = true;
+
+        // Faixa colorida vibrante do setor (Azul = Mesas, Laranja = Delivery)
         const stripe = new THREE.Mesh(
-            new THREE.BoxGeometry(2.66, 0.22, 1.46),
+            new THREE.BoxGeometry(width + 0.02, 0.24, 1.44),
             accentMat
         );
-        stripe.position.y = 0.65;
-        stripe.castShadow = true;
+        stripe.position.y = 0.88;
 
-        const top = new THREE.Mesh(
-            new THREE.BoxGeometry(2.74, 0.14, 1.54),
+        // Tampo superior claro
+        const counterTop = new THREE.Mesh(
+            new THREE.BoxGeometry(width + 0.04, 0.08, 1.48),
             topMat
         );
-        top.position.y = 1.12;
-        top.castShadow = true;
-        top.receiveShadow = true;
+        counterTop.position.y = 1.12;
+        counterTop.castShadow = true;
+        counterTop.receiveShadow = true;
 
-        const totemPost = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.06, 0.06, 0.55, 12),
+        // Placa indicadora colorida na ponta do setor
+        const signPost = new THREE.Mesh(
+            new THREE.BoxGeometry(0.1, 0.52, 0.1),
             accentMat
         );
-        totemPost.position.set(-1.12, 1.42, 0.45);
-        totemPost.castShadow = true;
+        signPost.position.set(-width / 2 + 0.35, 1.38, 0.45);
 
-        const totemBadge = new THREE.Mesh(
-            new THREE.BoxGeometry(0.36, 0.28, 0.12),
+        const signBoard = new THREE.Mesh(
+            new THREE.BoxGeometry(0.55, 0.34, 0.12),
             accentMat
         );
-        totemBadge.position.set(-1.12, 1.72, 0.45);
-        totemBadge.castShadow = true;
+        signBoard.position.set(-width / 2 + 0.35, 1.66, 0.45);
 
-        this.ringMesh = new THREE.Mesh(
-            new THREE.RingGeometry(1.12, 1.38, 32),
-            new THREE.MeshBasicMaterial({
-                color: accentColor,
-                side: THREE.DoubleSide
-            })
-        );
+        // Anel de entrega no lado da cozinha (z = -1.45 relativo ao balcão)
+        const ringGeo = new THREE.RingGeometry(0.9, 1.12, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: this.accentColor,
+            side: THREE.DoubleSide
+        });
+        this.ringMesh = new THREE.Mesh(ringGeo, ringMat);
         this.ringMesh.rotation.x = -Math.PI / 2;
-        this.ringMesh.position.copy(this.dropZoneOffset);
+        this.ringMesh.position.set(0, 0.025, -1.45);
 
-        this.mesh.add(body, stripe, top, totemPost, totemBadge, this.ringMesh);
+        this.mesh.add(
+            plinth,
+            counter,
+            stripe,
+            counterTop,
+            signPost,
+            signBoard,
+            this.ringMesh
+        );
     }
 
     public triggerDeliveryFeedback(): void {
-        this.pulseTime = 0.2;
+        this.bounceTime = 0.18;
     }
 
-    public update(dt: number): void {
-        if (this.pulseTime > 0) {
-            this.pulseTime = Math.max(0, this.pulseTime - dt);
-            const t = 1 - this.pulseTime / 0.2;
-            const bounce = Math.sin(t * Math.PI) * 0.08;
-            this.mesh.scale.set(1 + bounce, 1 - bounce * 0.5, 1 + bounce);
+    updateDelivery(
+        dt: number,
+        playerPos: THREE.Vector3,
+        playerStackCount: number
+    ): { delivered: number; earned: number } {
+        const dropCenterZ = this.position.z - 1.45;
+        const dist = Math.hypot(
+            playerPos.x - this.position.x,
+            playerPos.z - dropCenterZ
+        );
+        const insideZone = dist <= 1.55;
+
+        if (!insideZone || playerStackCount <= 0) {
+            this.deliverTimer = 0;
+            return { delivered: 0, earned: 0 };
+        }
+
+        this.deliverTimer += dt;
+        if (this.deliverTimer >= this.deliverInterval) {
+            this.deliverTimer = 0;
+            return { delivered: 1, earned: this.payoutPerPizza };
+        }
+
+        return { delivered: 0, earned: 0 };
+    }
+
+    update(dt: number): void {
+        if (this.bounceTime > 0) {
+            this.bounceTime = Math.max(0, this.bounceTime - dt);
+            const t = 1 - this.bounceTime / 0.18;
+            const s = 1 + Math.sin(t * Math.PI) * 0.05;
+            this.mesh.scale.set(1, s, 1);
         } else {
             this.mesh.scale.set(1, 1, 1);
         }
 
-        const ringPulse = 1 + Math.sin(performance.now() * 0.006) * 0.04;
-        this.ringMesh.scale.set(ringPulse, ringPulse, 1);
-    }
-
-    public updateDelivery(
-        dt: number,
-        playerPos: THREE.Vector3,
-        availableStackCount: number
-    ): { delivered: number; earned: number } {
-        if (availableStackCount <= 0) {
-            this.dropTimer = 0;
-            return { delivered: 0, earned: 0 };
-        }
-
-        const zoneX = this.position.x + this.dropZoneOffset.x;
-        const zoneZ = this.position.z + this.dropZoneOffset.z;
-        const dist = Math.hypot(playerPos.x - zoneX, playerPos.z - zoneZ);
-
-        if (dist > this.dropRadius) {
-            this.dropTimer = 0;
-            return { delivered: 0, earned: 0 };
-        }
-
-        this.dropTimer += dt;
-        if (this.dropTimer >= this.dropInterval) {
-            this.dropTimer = 0;
-            return { delivered: 1, earned: this.baseReward };
-        }
-
-        return { delivered: 0, earned: 0 };
+        const pulse = 1 + Math.sin(performance.now() * 0.005) * 0.04;
+        this.ringMesh.scale.set(pulse, pulse, 1);
     }
 }

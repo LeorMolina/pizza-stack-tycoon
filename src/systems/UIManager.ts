@@ -12,13 +12,15 @@ export class UIManager {
     private readonly upgradeButtons = new Map<UpgradeId, HTMLButtonElement>();
     private readonly onUpgradeClick: (id: UpgradeId) => void;
     private readonly saveBtn?: HTMLButtonElement;
+    private readonly zoomBtn?: HTMLButtonElement;
     private modalOverlay?: HTMLDivElement;
 
     constructor(
         container: HTMLElement,
         onUpgradeClick: (id: UpgradeId) => void,
         onSaveGame?: () => void,
-        onResetSave?: () => void
+        onResetSave?: () => void,
+        onToggleZoom?: () => boolean
     ) {
         this.onUpgradeClick = onUpgradeClick;
 
@@ -37,11 +39,12 @@ export class UIManager {
         topBar.style.gap = "12px";
         topBar.style.flexWrap = "wrap";
 
-        // Esquerda: Pilha e Clientes
+        // Esquerda: Pilha, Clientes e Botão de Câmera
         const leftGroup = document.createElement("div");
         leftGroup.style.display = "flex";
         leftGroup.style.gap = "10px";
         leftGroup.style.flexWrap = "wrap";
+        leftGroup.style.alignItems = "center";
 
         const stackBadge = this.createBadge("#ea580c");
         stackBadge.innerHTML = `Pilha: <span id="hud-stack">0/12</span>`;
@@ -50,6 +53,30 @@ export class UIManager {
         servedBadge.innerHTML = `Clientes: <span id="hud-served">0</span>`;
 
         leftGroup.append(stackBadge, servedBadge);
+
+        if (onToggleZoom) {
+            this.zoomBtn = document.createElement("button");
+            this.zoomBtn.type = "button";
+            this.zoomBtn.textContent = "Visão Geral";
+            this.zoomBtn.title = "Use também a rodinha do mouse para dar zoom";
+            this.zoomBtn.style.pointerEvents = "auto";
+            this.zoomBtn.style.background = "rgba(15, 23, 42, 0.85)";
+            this.zoomBtn.style.color = "#ffffff";
+            this.zoomBtn.style.padding = "8px 14px";
+            this.zoomBtn.style.border = "none";
+            this.zoomBtn.style.borderRadius = "999px";
+            this.zoomBtn.style.fontWeight = "700";
+            this.zoomBtn.style.fontSize = "13px";
+            this.zoomBtn.style.cursor = "pointer";
+            this.zoomBtn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.18)";
+            this.zoomBtn.addEventListener("click", () => {
+                const isOverview = onToggleZoom();
+                if (this.zoomBtn) {
+                    this.zoomBtn.textContent = isOverview ? "Aproximar" : "Visão Geral";
+                }
+            });
+            leftGroup.appendChild(this.zoomBtn);
+        }
 
         // Centro: Estrela de Nível + Barra de Progresso Verde
         const centerGroup = document.createElement("div");
@@ -178,6 +205,12 @@ export class UIManager {
         this.stackEl = topBar.querySelector("#hud-stack") as HTMLSpanElement;
         this.servedEl = topBar.querySelector("#hud-served") as HTMLSpanElement;
         this.levelNumEl = topBar.querySelector("#hud-level-num") as HTMLSpanElement;
+    }
+
+    public syncZoomButtonLabel(isOverview: boolean): void {
+        if (this.zoomBtn) {
+            this.zoomBtn.textContent = isOverview ? "Aproximar" : "Visão Geral";
+        }
     }
 
     private flashSavedFeedback(): void {

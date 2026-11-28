@@ -5,262 +5,184 @@ import { PizzaStation } from "./PizzaStation";
 
 export class Helper {
     public readonly mesh: THREE.Group;
-    public readonly position: THREE.Vector3;
-    private readonly homePos: THREE.Vector3;
-    private readonly bodyGroup: THREE.Group;
-    private readonly leftArm: THREE.Group;
-    private readonly rightArm: THREE.Group;
-    private readonly leftFoot: THREE.Mesh;
-    private readonly rightFoot: THREE.Mesh;
-    private readonly carryStack: THREE.Group;
+    private readonly leftLeg: THREE.Mesh;
+    private readonly rightLeg: THREE.Mesh;
+    private readonly leftArm: THREE.Mesh;
+    private readonly rightArm: THREE.Mesh;
+    private readonly trashStack: THREE.Group;
+
+    private speed = 3.2;
+    private capacity = 3;
+    private trashCount = 0;
     private walkPhase = 0;
-    private hired = false;
-    private moveSpeed = 3.4;
-    private maxCarry = 2;
-    private carryCount = 0;
 
     constructor(x: number, z: number) {
-        this.position = new THREE.Vector3(x, 0, z);
-        this.homePos = new THREE.Vector3(x, 0, z);
-
         this.mesh = new THREE.Group();
-        this.mesh.position.copy(this.position);
-        this.mesh.visible = false;
+        this.mesh.position.set(x, 0, z);
 
-        this.bodyGroup = new THREE.Group();
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.45 });
+        const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xfdba74, roughness: 0.4 });
+        const capMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.4 });
 
-        const shirtMat = new THREE.MeshStandardMaterial({
-            color: 0x059669,
-            roughness: 0.45,
-            metalness: 0.05
-        });
-        const apronMat = new THREE.MeshStandardMaterial({
-            color: 0xf8fafc,
-            roughness: 0.5,
-            metalness: 0.02
-        });
-        const capMat = new THREE.MeshStandardMaterial({
-            color: 0x047857,
-            roughness: 0.4
-        });
-        const skinMat = new THREE.MeshStandardMaterial({
-            color: 0xfcd5b5,
-            roughness: 0.5,
-            metalness: 0.02
-        });
-        const shoeMat = new THREE.MeshStandardMaterial({
-            color: 0x1e293b,
-            roughness: 0.6
-        });
+        const legGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.42, 10);
+        this.leftLeg = new THREE.Mesh(legGeo, pantsMat);
+        this.leftLeg.position.set(-0.14, 0.21, 0);
+        this.leftLeg.castShadow = true;
 
-        const torso = new THREE.Mesh(
-            new THREE.CapsuleGeometry(0.36, 0.38, 12, 24),
-            shirtMat
-        );
-        torso.position.y = 0.94;
+        this.rightLeg = new THREE.Mesh(legGeo, pantsMat);
+        this.rightLeg.position.set(0.14, 0.21, 0);
+        this.rightLeg.castShadow = true;
+
+        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 0.56, 12), shirtMat);
+        torso.position.y = 0.68;
         torso.castShadow = true;
 
-        const apron = new THREE.Mesh(
-            new THREE.BoxGeometry(0.46, 0.48, 0.12),
-            apronMat
-        );
-        apron.position.set(0, 0.88, 0.33);
-        apron.castShadow = true;
+        const armGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.44, 10);
+        this.leftArm = new THREE.Mesh(armGeo, shirtMat);
+        this.leftArm.position.set(-0.36, 0.72, 0);
+        this.leftArm.castShadow = true;
 
-        const head = new THREE.Mesh(
-            new THREE.SphereGeometry(0.36, 24, 24),
-            skinMat
-        );
-        head.position.y = 1.74;
+        this.rightArm = new THREE.Mesh(armGeo, shirtMat);
+        this.rightArm.position.set(0.36, 0.72, 0);
+        this.rightArm.castShadow = true;
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), skinMat);
+        head.position.y = 1.22;
         head.castShadow = true;
 
-        const capDome = new THREE.Mesh(
-            new THREE.SphereGeometry(0.37, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.52),
-            capMat
-        );
-        capDome.position.y = 1.77;
-        capDome.castShadow = true;
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.27, 0.14, 12), capMat);
+        cap.position.y = 1.42;
 
-        const capVisor = new THREE.Mesh(
-            new THREE.BoxGeometry(0.34, 0.05, 0.24),
-            capMat
-        );
-        capVisor.position.set(0, 1.84, 0.34);
+        this.trashStack = new THREE.Group();
+        this.trashStack.position.set(0, 1.1, 0.35);
 
-        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 });
-        const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), eyeMat);
-        leftEye.position.set(-0.12, 1.75, 0.33);
-
-        const rightEye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), eyeMat);
-        rightEye.position.set(0.12, 1.75, 0.33);
-
-        this.leftArm = new THREE.Group();
-        this.leftArm.position.set(-0.46, 1.2, 0);
-        const leftSleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.22, 8, 16), shirtMat);
-        leftSleeve.position.y = -0.14;
-        const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.115, 14, 14), skinMat);
-        leftHand.position.y = -0.31;
-        this.leftArm.add(leftSleeve, leftHand);
-
-        this.rightArm = new THREE.Group();
-        this.rightArm.position.set(0.46, 1.2, 0);
-        const rightSleeve = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.22, 8, 16), shirtMat);
-        rightSleeve.position.y = -0.14;
-        const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.115, 14, 14), skinMat);
-        rightHand.position.y = -0.31;
-        this.rightArm.add(rightSleeve, rightHand);
-
-        this.leftFoot = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), shoeMat);
-        this.leftFoot.scale.set(0.9, 0.65, 1.2);
-        this.leftFoot.position.set(-0.19, 0.1, 0.04);
-
-        this.rightFoot = new THREE.Mesh(new THREE.SphereGeometry(0.15, 16, 16), shoeMat);
-        this.rightFoot.scale.set(0.9, 0.65, 1.2);
-        this.rightFoot.position.set(0.19, 0.1, 0.04);
-
-        this.carryStack = new THREE.Group();
-        this.carryStack.position.set(0, 1.02, 0.5);
-
-        this.bodyGroup.add(
+        this.mesh.add(
+            this.leftLeg,
+            this.rightLeg,
             torso,
-            apron,
-            head,
-            capDome,
-            capVisor,
-            leftEye,
-            rightEye,
             this.leftArm,
             this.rightArm,
-            this.carryStack
+            head,
+            cap,
+            this.trashStack
         );
-        this.mesh.add(this.bodyGroup, this.leftFoot, this.rightFoot);
+        this.mesh.scale.setScalar(1.28);
     }
 
-    public isHired(): boolean {
-        return this.hired;
+    public setSpeed(speed: number): void {
+        this.speed = speed;
     }
 
-    public hire(): void {
-        this.hired = true;
-        this.mesh.visible = true;
+    public setCapacity(capacity: number): void {
+        this.capacity = Math.max(1, Math.floor(capacity));
     }
 
-    public upgrade(): void {
-        this.moveSpeed += 0.7;
-        this.maxCarry += 1;
+    private getNavWaypoint(target: THREE.Vector3): THREE.Vector3 {
+        const counterZ = -2.2;
+        const passageX = 8.95;
+        const currentZ = this.mesh.position.z;
+
+        const needsCrossToHall = currentZ < counterZ - 0.4 && target.z > counterZ + 0.4;
+        const needsCrossToKitchen = currentZ > counterZ + 0.4 && target.z < counterZ - 0.4;
+
+        if ((needsCrossToHall || needsCrossToKitchen) && this.mesh.position.x < passageX - 0.45) {
+            return new THREE.Vector3(passageX, 0, currentZ < counterZ ? -3.3 : -1.0);
+        }
+        return target;
     }
 
-    private findNearestDirtyTable(tables: DiningTable[]): DiningTable | null {
-        let nearest: DiningTable | null = null;
-        let bestDist = Infinity;
+    private tableHasTrash(table: DiningTable): boolean {
+        const t = table as unknown as Record<string, unknown>;
+        if (typeof t.needsCleaning === "function") return (t.needsCleaning as () => boolean)();
+        if (typeof t.hasEmptyBox === "function") return (t.hasEmptyBox as () => boolean)();
+        return Boolean(t.hasTrash || t.dirty);
+    }
 
-        for (const table of tables) {
-            if (!table.isAvailable()) {
-                const dist = this.position.distanceTo(table.position);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    nearest = table;
-                }
-            }
+    private moveTowards(target: THREE.Vector3, dt: number): boolean {
+        const waypoint = this.getNavWaypoint(target);
+        const dx = waypoint.x - this.mesh.position.x;
+        const dz = waypoint.z - this.mesh.position.z;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist <= 0.2) {
+            this.leftLeg.rotation.x = 0;
+            this.rightLeg.rotation.x = 0;
+            this.mesh.position.y = 0;
+            return waypoint === target;
         }
 
-        return nearest;
-    }
+        const step = Math.min(dist, this.speed * dt);
+        this.mesh.position.x += (dx / dist) * step;
+        this.mesh.position.z += (dz / dist) * step;
+        this.mesh.rotation.y = Math.atan2(dx, dz);
 
-    private avoidTables(tables: DiningTable[]): void {
-        const helperRadius = 0.5;
-        for (const table of tables) {
-            const dx = this.mesh.position.x - table.position.x;
-            const dz = this.mesh.position.z - table.position.z;
-            const minDist = helperRadius + table.radius;
-            const distSq = dx * dx + dz * dz;
+        this.walkPhase += dt * 12;
+        const swing = Math.sin(this.walkPhase) * 0.55;
+        this.leftLeg.rotation.x = swing;
+        this.rightLeg.rotation.x = -swing;
 
-            if (distSq < minDist * minDist) {
-                const dist = Math.sqrt(distSq) || 0.0001;
-                const overlap = minDist - dist;
-                this.mesh.position.x += (dx / dist) * overlap;
-                this.mesh.position.z += (dz / dist) * overlap;
-            }
+        if (this.trashCount > 0) {
+            this.leftArm.rotation.x = -0.7;
+            this.rightArm.rotation.x = -0.7;
+        } else {
+            this.leftArm.rotation.x = -swing * 0.7;
+            this.rightArm.rotation.x = swing * 0.7;
         }
+
+        this.mesh.position.y = Math.abs(Math.sin(this.walkPhase)) * 0.06;
+        return false;
     }
 
     public update(dt: number, tables: DiningTable[], trashBin: TrashBin): void {
-        if (!this.hired) return;
-
-        if (this.carryCount < this.maxCarry) {
+        // Tenta coletar caixas vazias das mesas próximas
+        if (this.trashCount < this.capacity) {
             for (const table of tables) {
-                if (this.carryCount >= this.maxCarry) break;
                 if (table.tryPickupEmptyBox(this.mesh.position)) {
-                    const trashBox = PizzaStation.createPizzaBoxMesh();
-                    trashBox.scale.setScalar(0.6);
-                    trashBox.position.set(0, this.carryCount * 0.18, 0);
-                    this.carryStack.add(trashBox);
-                    this.carryCount++;
+                    const box = PizzaStation.createPizzaBoxMesh();
+                    box.scale.setScalar(0.58);
+                    box.position.set(0, this.trashCount * 0.18, 0);
+                    this.trashStack.add(box);
+                    this.trashCount++;
+                    if (this.trashCount >= this.capacity) break;
                 }
             }
         }
 
-        let targetPos = this.homePos;
-        const dirtyTable = this.findNearestDirtyTable(tables);
+        // Se atingiu capacidade ou não há mais mesas sujas e está carregando lixo, vai para a lixeira
+        const dirtyTable = tables.find((t) => this.tableHasTrash(t));
 
-        if (this.carryCount >= this.maxCarry || (this.carryCount > 0 && !dirtyTable)) {
-            targetPos = new THREE.Vector3(
-                trashBin.position.x - 1.1,
-                0,
-                trashBin.position.z + 1.1
-            );
-        } else if (dirtyTable) {
-            targetPos = new THREE.Vector3(
-                dirtyTable.position.x,
-                0,
-                dirtyTable.position.z - 1.45
-            );
-        }
+        if (this.trashCount >= this.capacity || (this.trashCount > 0 && !dirtyTable)) {
+            const binTarget = new THREE.Vector3(trashBin.position.x - 0.8, 0, trashBin.position.z - 0.8);
+            this.moveTowards(binTarget, dt);
 
-        const dx = targetPos.x - this.mesh.position.x;
-        const dz = targetPos.z - this.mesh.position.z;
-        const dist = Math.hypot(dx, dz);
-        const armHoldLift = this.carryCount > 0 ? -0.75 : 0;
-
-        if (dist > 0.12) {
-            const step = Math.min(dist, this.moveSpeed * dt);
-            this.mesh.position.x += (dx / dist) * step;
-            this.mesh.position.z += (dz / dist) * step;
-            this.avoidTables(tables);
-            this.position.copy(this.mesh.position);
-
-            this.mesh.rotation.y = Math.atan2(dx, dz);
-            this.walkPhase += dt * 11;
-            const swing = Math.sin(this.walkPhase);
-
-            this.leftFoot.position.z = 0.04 + swing * 0.2;
-            this.rightFoot.position.z = 0.04 - swing * 0.2;
-            this.leftArm.rotation.x = -swing * 0.45 + armHoldLift;
-            this.rightArm.rotation.x = swing * 0.45 + armHoldLift;
-            this.bodyGroup.position.y = Math.abs(swing) * 0.05;
-        } else {
-            this.position.copy(this.mesh.position);
-            this.leftFoot.position.z = 0.04;
-            this.rightFoot.position.z = 0.04;
-            this.leftArm.rotation.x = armHoldLift;
-            this.rightArm.rotation.x = armHoldLift;
-            this.bodyGroup.position.y = 0;
-
-            if (targetPos === this.homePos) {
-                this.mesh.rotation.y = 0;
-            }
-        }
-
-        if (this.carryCount > 0) {
             const distToBin = Math.hypot(
                 this.mesh.position.x - trashBin.position.x,
                 this.mesh.position.z - trashBin.position.z
             );
-            if (distToBin <= 2.4) {
-                this.carryCount = 0;
-                this.carryStack.clear();
+            if (distToBin <= 2.3) {
+                this.trashCount = 0;
+                this.trashStack.clear();
+                this.leftArm.rotation.x = 0;
+                this.rightArm.rotation.x = 0;
                 trashBin.triggerFeedback();
             }
+            return;
         }
+
+        // Vai até a próxima mesa suja
+        if (dirtyTable) {
+            const tableTarget = new THREE.Vector3(
+                dirtyTable.position.x + 1.1,
+                0,
+                dirtyTable.position.z
+            );
+            this.moveTowards(tableTarget, dt);
+            return;
+        }
+
+        // Ponto de espera no salão (fora do caminho do balcão)
+        const idleSpot = new THREE.Vector3(7.4, 0, 5.8);
+        this.moveTowards(idleSpot, dt);
     }
 }
